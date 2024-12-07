@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2021 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -41,7 +41,17 @@ public abstract class AbstractScriptDatabaseInitializerTests<T extends AbstractS
 		settings.setDataLocations(Arrays.asList("data.sql"));
 		T initializer = createEmbeddedDatabaseInitializer(settings);
 		assertThat(initializer.initializeDatabase()).isTrue();
-		assertThat(numberOfEmbeddedRows("SELECT COUNT(*) FROM EXAMPLE")).isEqualTo(1);
+		assertThat(numberOfEmbeddedRows("SELECT COUNT(*) FROM EXAMPLE")).isOne();
+	}
+
+	@Test
+	void whenDatabaseIsInitializedWithDirectoryLocationsThenFailureIsHelpful() {
+		DatabaseInitializationSettings settings = new DatabaseInitializationSettings();
+		settings.setSchemaLocations(Arrays.asList("/org/springframework/boot/sql/init"));
+		settings.setDataLocations(Arrays.asList("/org/springframework/boot/sql/init"));
+		T initializer = createEmbeddedDatabaseInitializer(settings);
+		assertThatIllegalStateException().isThrownBy(initializer::initializeDatabase)
+			.withMessage("No schema scripts found at location '/org/springframework/boot/sql/init'");
 	}
 
 	@Test
@@ -49,7 +59,7 @@ public abstract class AbstractScriptDatabaseInitializerTests<T extends AbstractS
 		DatabaseInitializationSettings settings = new DatabaseInitializationSettings();
 		settings.setDataLocations(Arrays.asList("data.sql"));
 		T initializer = createEmbeddedDatabaseInitializer(settings);
-		assertThatExceptionOfType(DataAccessException.class).isThrownBy(() -> initializer.initializeDatabase());
+		assertThatExceptionOfType(DataAccessException.class).isThrownBy(initializer::initializeDatabase);
 		assertThatDatabaseWasAccessed(initializer);
 	}
 
@@ -69,7 +79,7 @@ public abstract class AbstractScriptDatabaseInitializerTests<T extends AbstractS
 		settings.setSchemaLocations(Arrays.asList("does-not-exist.sql"));
 		T initializer = createEmbeddedDatabaseInitializer(settings);
 		assertThatIllegalStateException().isThrownBy(initializer::initializeDatabase)
-				.withMessage("No schema scripts found at location 'does-not-exist.sql'");
+			.withMessage("No schema scripts found at location 'does-not-exist.sql'");
 		assertThatDatabaseWasNotAccessed(initializer);
 	}
 
@@ -79,7 +89,7 @@ public abstract class AbstractScriptDatabaseInitializerTests<T extends AbstractS
 		settings.setDataLocations(Arrays.asList("does-not-exist.sql"));
 		T initializer = createEmbeddedDatabaseInitializer(settings);
 		assertThatIllegalStateException().isThrownBy(initializer::initializeDatabase)
-				.withMessage("No data scripts found at location 'does-not-exist.sql'");
+			.withMessage("No data scripts found at location 'does-not-exist.sql'");
 		assertThatDatabaseWasNotAccessed(initializer);
 	}
 
@@ -131,7 +141,7 @@ public abstract class AbstractScriptDatabaseInitializerTests<T extends AbstractS
 		settings.setMode(DatabaseInitializationMode.EMBEDDED);
 		T initializer = createEmbeddedDatabaseInitializer(settings);
 		assertThat(initializer.initializeDatabase()).isTrue();
-		assertThat(numberOfEmbeddedRows("SELECT COUNT(*) FROM EXAMPLE")).isEqualTo(1);
+		assertThat(numberOfEmbeddedRows("SELECT COUNT(*) FROM EXAMPLE")).isOne();
 	}
 
 	@Test
@@ -153,7 +163,7 @@ public abstract class AbstractScriptDatabaseInitializerTests<T extends AbstractS
 		settings.setMode(DatabaseInitializationMode.ALWAYS);
 		T initializer = createEmbeddedDatabaseInitializer(settings);
 		assertThat(initializer.initializeDatabase()).isTrue();
-		assertThat(numberOfEmbeddedRows("SELECT COUNT(*) FROM EXAMPLE")).isEqualTo(1);
+		assertThat(numberOfEmbeddedRows("SELECT COUNT(*) FROM EXAMPLE")).isOne();
 	}
 
 	@Test
@@ -164,7 +174,7 @@ public abstract class AbstractScriptDatabaseInitializerTests<T extends AbstractS
 		settings.setMode(DatabaseInitializationMode.ALWAYS);
 		T initializer = createStandaloneDatabaseInitializer(settings);
 		assertThat(initializer.initializeDatabase()).isTrue();
-		assertThat(numberOfStandaloneRows("SELECT COUNT(*) FROM EXAMPLE")).isEqualTo(1);
+		assertThat(numberOfStandaloneRows("SELECT COUNT(*) FROM EXAMPLE")).isOne();
 	}
 
 	protected abstract T createStandaloneDatabaseInitializer(DatabaseInitializationSettings settings);

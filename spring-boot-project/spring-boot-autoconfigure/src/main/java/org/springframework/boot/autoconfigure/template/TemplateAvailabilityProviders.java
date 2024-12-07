@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2019 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -54,9 +54,7 @@ public class TemplateAvailabilityProviders {
 	/**
 	 * Map from view name resolve template view, synchronized when accessed.
 	 */
-	@SuppressWarnings("serial")
-	private final Map<String, TemplateAvailabilityProvider> cache = new LinkedHashMap<String, TemplateAvailabilityProvider>(
-			CACHE_LIMIT, 0.75f, true) {
+	private final Map<String, TemplateAvailabilityProvider> cache = new LinkedHashMap<>(CACHE_LIMIT, 0.75f, true) {
 
 		@Override
 		protected boolean removeEldestEntry(Map.Entry<String, TemplateAvailabilityProvider> eldest) {
@@ -155,7 +153,7 @@ public class TemplateAvailabilityProviders {
 		return null;
 	}
 
-	private static class NoTemplateAvailabilityProvider implements TemplateAvailabilityProvider {
+	private static final class NoTemplateAvailabilityProvider implements TemplateAvailabilityProvider {
 
 		@Override
 		public boolean isTemplateAvailable(String view, Environment environment, ClassLoader classLoader,

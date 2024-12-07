@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2022 the original author or authors.
+ * Copyright 2012-2023 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,6 +16,7 @@
 
 package org.springframework.boot.actuate.endpoint.invoke.convert;
 
+import java.lang.annotation.Annotation;
 import java.time.OffsetDateTime;
 
 import org.junit.jupiter.api.Test;
@@ -29,6 +30,7 @@ import org.springframework.format.support.DefaultFormattingConversionService;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
 import static org.mockito.Mockito.mock;
@@ -54,15 +56,15 @@ class ConversionServiceParameterValueMapperTests {
 	void mapParameterWhenConversionServiceFailsShouldThrowParameterMappingException() {
 		ConversionService conversionService = mock(ConversionService.class);
 		RuntimeException error = new RuntimeException();
-		given(conversionService.convert(any(), any())).willThrow(error);
+		given(conversionService.convert(any(Object.class), eq(Integer.class))).willThrow(error);
 		ConversionServiceParameterValueMapper mapper = new ConversionServiceParameterValueMapper(conversionService);
 		assertThatExceptionOfType(ParameterMappingException.class)
-				.isThrownBy(() -> mapper.mapParameterValue(new TestOperationParameter(Integer.class), "123"))
-				.satisfies((ex) -> {
-					assertThat(ex.getValue()).isEqualTo("123");
-					assertThat(ex.getParameter().getType()).isEqualTo(Integer.class);
-					assertThat(ex.getCause()).isEqualTo(error);
-				});
+			.isThrownBy(() -> mapper.mapParameterValue(new TestOperationParameter(Integer.class), "123"))
+			.satisfies((ex) -> {
+				assertThat(ex.getValue()).isEqualTo("123");
+				assertThat(ex.getParameter().getType()).isEqualTo(Integer.class);
+				assertThat(ex.getCause()).isEqualTo(error);
+			});
 	}
 
 	@Test
@@ -78,7 +80,7 @@ class ConversionServiceParameterValueMapperTests {
 		ConversionService conversionService = new DefaultConversionService();
 		ConversionServiceParameterValueMapper mapper = new ConversionServiceParameterValueMapper(conversionService);
 		assertThatExceptionOfType(ParameterMappingException.class).isThrownBy(() -> mapper
-				.mapParameterValue(new TestOperationParameter(OffsetDateTime.class), "2011-12-03T10:15:30+01:00"));
+			.mapParameterValue(new TestOperationParameter(OffsetDateTime.class), "2011-12-03T10:15:30+01:00"));
 	}
 
 	static class TestOperationParameter implements OperationParameter {
@@ -102,6 +104,11 @@ class ConversionServiceParameterValueMapperTests {
 		@Override
 		public boolean isMandatory() {
 			return false;
+		}
+
+		@Override
+		public <T extends Annotation> T getAnnotation(Class<T> annotation) {
+			return null;
 		}
 
 	}

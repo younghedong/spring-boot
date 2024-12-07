@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2021 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,14 +18,20 @@ package org.springframework.boot.testsupport.classpath;
 
 import java.io.File;
 import java.lang.management.ManagementFactory;
+import java.lang.reflect.AnnotatedElement;
+import java.lang.reflect.Method;
+import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.URL;
 import java.net.URLClassLoader;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
+import java.util.Collection;
+import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.jar.Attributes;
 import java.util.jar.JarFile;
 import java.util.regex.Pattern;
@@ -38,7 +44,6 @@ import org.eclipse.aether.artifact.DefaultArtifact;
 import org.eclipse.aether.collection.CollectRequest;
 import org.eclipse.aether.connector.basic.BasicRepositoryConnectorFactory;
 import org.eclipse.aether.graph.Dependency;
-import org.eclipse.aether.impl.DefaultServiceLocator;
 import org.eclipse.aether.repository.LocalRepository;
 import org.eclipse.aether.repository.RemoteRepository;
 import org.eclipse.aether.resolution.ArtifactResult;
@@ -51,7 +56,9 @@ import org.eclipse.aether.transport.http.HttpTransporterFactory;
 import org.springframework.core.annotation.MergedAnnotation;
 import org.springframework.core.annotation.MergedAnnotations;
 import org.springframework.util.AntPathMatcher;
+import org.springframework.util.ClassUtils;
 import org.springframework.util.ConcurrentReferenceHashMap;
+import org.springframework.util.ObjectUtils;
 import org.springframework.util.StringUtils;
 
 /**
@@ -62,43 +69,78 @@ import org.springframework.util.StringUtils;
  */
 final class ModifiedClassPathClassLoader extends URLClassLoader {
 
-	private static final Map<Class<?>, ModifiedClassPathClassLoader> cache = new ConcurrentReferenceHashMap<>();
+	private static final Map<List<AnnotatedElement>, ModifiedClassPathClassLoader> cache = new ConcurrentReferenceHashMap<>();
 
 	private static final Pattern INTELLIJ_CLASSPATH_JAR_PATTERN = Pattern.compile(".*classpath(\\d+)?\\.jar");
 
 	private static final int MAX_RESOLUTION_ATTEMPTS = 5;
 
+	private final Set<String> excludedPackages;
+
 	private final ClassLoader junitLoader;
 
-	ModifiedClassPathClassLoader(URL[] urls, ClassLoader parent, ClassLoader junitLoader) {
+	ModifiedClassPathClassLoader(URL[] urls, Set<String> excludedPackages, ClassLoader parent,
+			ClassLoader junitLoader) {
 		super(urls, parent);
+		this.excludedPackages = excludedPackages;
 		this.junitLoader = junitLoader;
 	}
 
 	@Override
 	public Class<?> loadClass(String name) throws ClassNotFoundException {
-		if (name.startsWith("org.junit") || name.startsWith("org.hamcrest")
-				|| name.startsWith("io.netty.internal.tcnative")) {
+		if (name.startsWith("org.junit.") || name.startsWith("org.hamcrest.")
+				|| name.startsWith("io.netty.internal.tcnative.")) {
 			return Class.forName(name, false, this.junitLoader);
+		}
+		String packageName = ClassUtils.getPackageName(name);
+		if (this.excludedPackages.contains(packageName)) {
+			throw new ClassNotFoundException();
 		}
 		return super.loadClass(name);
 	}
 
-	static ModifiedClassPathClassLoader get(Class<?> testClass) {
-		return cache.computeIfAbsent(testClass, ModifiedClassPathClassLoader::compute);
+	@SuppressWarnings("resource")
+	static ModifiedClassPathClassLoader get(Class<?> testClass, Method testMethod, List<Object> arguments) {
+		Set<AnnotatedElement> candidates = new LinkedHashSet<>();
+		candidates.add(testClass);
+		candidates.add(testMethod);
+		candidates.addAll(getAnnotatedElements(arguments.toArray()));
+		List<AnnotatedElement> annotatedElements = candidates.stream()
+			.filter(ModifiedClassPathClassLoader::hasAnnotation)
+			.toList();
+		if (annotatedElements.isEmpty()) {
+			return null;
+		}
+		return cache.computeIfAbsent(annotatedElements, (key) -> compute(testClass.getClassLoader(), key));
 	}
 
-	private static ModifiedClassPathClassLoader compute(Class<?> testClass) {
-		ClassLoader classLoader = testClass.getClassLoader();
-		MergedAnnotations annotations = MergedAnnotations.from(testClass,
-				MergedAnnotations.SearchStrategy.TYPE_HIERARCHY);
-		if (annotations.isPresent(ForkedClassPath.class) && (annotations.isPresent(ClassPathOverrides.class)
-				|| annotations.isPresent(ClassPathExclusions.class))) {
-			throw new IllegalStateException("@ForkedClassPath is redundant in combination with either "
-					+ "@ClassPathOverrides or @ClassPathExclusions");
+	private static Collection<AnnotatedElement> getAnnotatedElements(Object[] array) {
+		Set<AnnotatedElement> result = new LinkedHashSet<>();
+		for (Object item : array) {
+			if (item instanceof AnnotatedElement annotatedElement) {
+				result.add(annotatedElement);
+			}
+			else if (ObjectUtils.isArray(item)) {
+				result.addAll(getAnnotatedElements(ObjectUtils.toObjectArray(item)));
+			}
 		}
+		return result;
+	}
+
+	private static boolean hasAnnotation(AnnotatedElement element) {
+		MergedAnnotations annotations = MergedAnnotations.from(element,
+				MergedAnnotations.SearchStrategy.TYPE_HIERARCHY);
+		return annotations.isPresent(ForkedClassPath.class) || annotations.isPresent(ClassPathOverrides.class)
+				|| annotations.isPresent(ClassPathExclusions.class);
+	}
+
+	private static ModifiedClassPathClassLoader compute(ClassLoader classLoader,
+			List<AnnotatedElement> annotatedClasses) {
+		List<MergedAnnotations> annotations = annotatedClasses.stream()
+			.map((source) -> MergedAnnotations.from(source, MergedAnnotations.SearchStrategy.TYPE_HIERARCHY))
+			.toList();
 		return new ModifiedClassPathClassLoader(processUrls(extractUrls(classLoader), annotations),
-				classLoader.getParent(), classLoader);
+				excludedPackages(annotations), classLoader.getParent(), classLoader);
 	}
 
 	private static URL[] extractUrls(ClassLoader classLoader) {
@@ -115,11 +157,11 @@ final class ModifiedClassPathClassLoader extends URLClassLoader {
 	}
 
 	private static Stream<URL> doExtractUrls(ClassLoader classLoader) {
-		if (classLoader instanceof URLClassLoader) {
-			return Stream.of(((URLClassLoader) classLoader).getURLs());
+		if (classLoader instanceof URLClassLoader urlClassLoader) {
+			return Stream.of(urlClassLoader.getURLs());
 		}
 		return Stream.of(ManagementFactory.getRuntimeMXBean().getClassPath().split(File.pathSeparator))
-				.map(ModifiedClassPathClassLoader::toURL);
+			.map(ModifiedClassPathClassLoader::toURL);
 	}
 
 	private static URL toURL(String entry) {
@@ -145,6 +187,7 @@ final class ModifiedClassPathClassLoader extends URLClassLoader {
 				return createdBy != null && createdBy.contains("IntelliJ");
 			}
 			catch (Exception ex) {
+				// Ignore
 			}
 		}
 		return false;
@@ -174,9 +217,9 @@ final class ModifiedClassPathClassLoader extends URLClassLoader {
 		}
 	}
 
-	private static URL[] processUrls(URL[] urls, MergedAnnotations annotations) {
-		ClassPathEntryFilter filter = new ClassPathEntryFilter(annotations.get(ClassPathExclusions.class));
-		List<URL> additionalUrls = getAdditionalUrls(annotations.get(ClassPathOverrides.class));
+	private static URL[] processUrls(URL[] urls, List<MergedAnnotations> annotations) {
+		ClassPathEntryFilter filter = new ClassPathEntryFilter(annotations);
+		List<URL> additionalUrls = getAdditionalUrls(annotations);
 		List<URL> processedUrls = new ArrayList<>(additionalUrls);
 		for (URL url : urls) {
 			if (!filter.isExcluded(url)) {
@@ -186,23 +229,26 @@ final class ModifiedClassPathClassLoader extends URLClassLoader {
 		return processedUrls.toArray(new URL[0]);
 	}
 
-	private static List<URL> getAdditionalUrls(MergedAnnotation<ClassPathOverrides> annotation) {
-		if (!annotation.isPresent()) {
-			return Collections.emptyList();
+	private static List<URL> getAdditionalUrls(List<MergedAnnotations> annotations) {
+		Set<URL> urls = new LinkedHashSet<>();
+		for (MergedAnnotations candidate : annotations) {
+			MergedAnnotation<ClassPathOverrides> annotation = candidate.get(ClassPathOverrides.class);
+			if (annotation.isPresent()) {
+				urls.addAll(resolveCoordinates(annotation.getStringArray(MergedAnnotation.VALUE)));
+			}
 		}
-		return resolveCoordinates(annotation.getStringArray(MergedAnnotation.VALUE));
+		return urls.stream().toList();
 	}
 
 	private static List<URL> resolveCoordinates(String[] coordinates) {
 		Exception latestFailure = null;
-		DefaultServiceLocator serviceLocator = MavenRepositorySystemUtils.newServiceLocator();
-		serviceLocator.addService(RepositoryConnectorFactory.class, BasicRepositoryConnectorFactory.class);
-		serviceLocator.addService(TransporterFactory.class, HttpTransporterFactory.class);
-		RepositorySystem repositorySystem = serviceLocator.getService(RepositorySystem.class);
+		RepositorySystem repositorySystem = createRepositorySystem();
 		DefaultRepositorySystemSession session = MavenRepositorySystemUtils.newSession();
+		session.setSystemProperties(System.getProperties());
 		LocalRepository localRepository = new LocalRepository(System.getProperty("user.home") + "/.m2/repository");
 		RemoteRepository remoteRepository = new RemoteRepository.Builder("central", "default",
-				"https://repo.maven.apache.org/maven2").build();
+				"https://repo.maven.apache.org/maven2")
+			.build();
 		session.setLocalRepositoryManager(repositorySystem.newLocalRepositoryManager(session, localRepository));
 		for (int i = 0; i < MAX_RESOLUTION_ATTEMPTS; i++) {
 			CollectRequest collectRequest = new CollectRequest(null, Arrays.asList(remoteRepository));
@@ -224,12 +270,32 @@ final class ModifiedClassPathClassLoader extends URLClassLoader {
 				latestFailure);
 	}
 
+	@SuppressWarnings("deprecation")
+	private static RepositorySystem createRepositorySystem() {
+		org.eclipse.aether.impl.DefaultServiceLocator serviceLocator = MavenRepositorySystemUtils.newServiceLocator();
+		serviceLocator.addService(RepositoryConnectorFactory.class, BasicRepositoryConnectorFactory.class);
+		serviceLocator.addService(TransporterFactory.class, HttpTransporterFactory.class);
+		RepositorySystem repositorySystem = serviceLocator.getService(RepositorySystem.class);
+		return repositorySystem;
+	}
+
 	private static List<Dependency> createDependencies(String[] allCoordinates) {
 		List<Dependency> dependencies = new ArrayList<>();
 		for (String coordinate : allCoordinates) {
 			dependencies.add(new Dependency(new DefaultArtifact(coordinate), null));
 		}
 		return dependencies;
+	}
+
+	private static Set<String> excludedPackages(List<MergedAnnotations> annotations) {
+		Set<String> excludedPackages = new HashSet<>();
+		for (MergedAnnotations candidate : annotations) {
+			MergedAnnotation<ClassPathExclusions> annotation = candidate.get(ClassPathExclusions.class);
+			if (annotation.isPresent()) {
+				excludedPackages.addAll(Arrays.asList(annotation.getStringArray("packages")));
+			}
+		}
+		return excludedPackages;
 	}
 
 	/**
@@ -241,18 +307,24 @@ final class ModifiedClassPathClassLoader extends URLClassLoader {
 
 		private final AntPathMatcher matcher = new AntPathMatcher();
 
-		private ClassPathEntryFilter(MergedAnnotation<ClassPathExclusions> annotation) {
-			this.exclusions = new ArrayList<>();
-			this.exclusions.add("log4j-*.jar");
-			if (annotation.isPresent()) {
-				this.exclusions.addAll(Arrays.asList(annotation.getStringArray(MergedAnnotation.VALUE)));
+		private ClassPathEntryFilter(List<MergedAnnotations> annotations) {
+			Set<String> exclusions = new LinkedHashSet<>();
+			for (MergedAnnotations candidate : annotations) {
+				MergedAnnotation<ClassPathExclusions> annotation = candidate.get(ClassPathExclusions.class);
+				if (annotation.isPresent()) {
+					exclusions.addAll(Arrays.asList(annotation.getStringArray(MergedAnnotation.VALUE)));
+				}
 			}
+			this.exclusions = exclusions.stream().toList();
 		}
 
 		private boolean isExcluded(URL url) {
 			if ("file".equals(url.getProtocol())) {
 				try {
-					String name = new File(url.toURI()).getName();
+					URI uri = url.toURI();
+					File file = new File(uri);
+					String name = (!uri.toString().endsWith("/")) ? file.getName()
+							: file.getParentFile().getParentFile().getName();
 					for (String exclusion : this.exclusions) {
 						if (this.matcher.match(exclusion, name)) {
 							return true;
@@ -260,6 +332,7 @@ final class ModifiedClassPathClassLoader extends URLClassLoader {
 					}
 				}
 				catch (URISyntaxException ex) {
+					// Ignore
 				}
 			}
 			return false;

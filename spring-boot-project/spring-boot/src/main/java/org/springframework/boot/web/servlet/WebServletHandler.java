@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2021 the original author or authors.
+ * Copyright 2012-2023 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -59,14 +59,18 @@ class WebServletHandler extends ServletComponentHandler {
 				: beanDefinition.getBeanClassName());
 	}
 
-	private MultipartConfigElement determineMultipartConfig(AnnotatedBeanDefinition beanDefinition) {
+	private BeanDefinition determineMultipartConfig(AnnotatedBeanDefinition beanDefinition) {
 		Map<String, Object> attributes = beanDefinition.getMetadata()
-				.getAnnotationAttributes(MultipartConfig.class.getName());
+			.getAnnotationAttributes(MultipartConfig.class.getName());
 		if (attributes == null) {
 			return null;
 		}
-		return new MultipartConfigElement((String) attributes.get("location"), (Long) attributes.get("maxFileSize"),
-				(Long) attributes.get("maxRequestSize"), (Integer) attributes.get("fileSizeThreshold"));
+		BeanDefinitionBuilder builder = BeanDefinitionBuilder.rootBeanDefinition(MultipartConfigElement.class);
+		builder.addConstructorArgValue(attributes.get("location"));
+		builder.addConstructorArgValue(attributes.get("maxFileSize"));
+		builder.addConstructorArgValue(attributes.get("maxRequestSize"));
+		builder.addConstructorArgValue(attributes.get("fileSizeThreshold"));
+		return builder.getBeanDefinition();
 	}
 
 }

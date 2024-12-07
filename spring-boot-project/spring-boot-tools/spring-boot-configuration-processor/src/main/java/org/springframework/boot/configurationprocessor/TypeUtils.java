@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2020 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,11 +24,13 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 import javax.annotation.processing.ProcessingEnvironment;
 import javax.lang.model.element.Element;
+import javax.lang.model.element.RecordComponentElement;
 import javax.lang.model.element.TypeElement;
 import javax.lang.model.type.ArrayType;
 import javax.lang.model.type.DeclaredType;
@@ -44,6 +46,7 @@ import javax.lang.model.util.Types;
  *
  * @author Stephane Nicoll
  * @author Phillip Webb
+ * @author Pavel Anisimov
  */
 class TypeUtils {
 
@@ -63,8 +66,6 @@ class TypeUtils {
 	}
 
 	private static final Map<String, TypeKind> WRAPPER_TO_PRIMITIVE;
-
-	private static final Pattern NEW_LINE_PATTERN = Pattern.compile("[\r\n]+");
 
 	static {
 		Map<String, TypeKind> primitives = new HashMap<>();
@@ -176,10 +177,11 @@ class TypeUtils {
 	}
 
 	String getJavaDoc(Element element) {
-		String javadoc = (element != null) ? this.env.getElementUtils().getDocComment(element) : null;
-		if (javadoc != null) {
-			javadoc = NEW_LINE_PATTERN.matcher(javadoc).replaceAll("").trim();
+		if (element instanceof RecordComponentElement) {
+			return getJavaDoc((RecordComponentElement) element);
 		}
+		String javadoc = (element != null) ? this.env.getElementUtils().getDocComment(element) : null;
+		javadoc = (javadoc != null) ? cleanUpJavaDoc(javadoc) : null;
 		return (javadoc == null || javadoc.isEmpty()) ? null : javadoc;
 	}
 
@@ -234,7 +236,8 @@ class TypeUtils {
 		if (type.getKind() == TypeKind.DECLARED) {
 			DeclaredType declaredType = (DeclaredType) type;
 			DeclaredType freshType = (DeclaredType) this.env.getElementUtils()
-					.getTypeElement(this.types.asElement(type).toString()).asType();
+				.getTypeElement(this.types.asElement(type).toString())
+				.asType();
 			List<? extends TypeMirror> arguments = declaredType.getTypeArguments();
 			for (int i = 0; i < arguments.size(); i++) {
 				TypeMirror specificType = arguments.get(i);
@@ -244,6 +247,38 @@ class TypeUtils {
 			TypeElement element = (TypeElement) this.types.asElement(type);
 			process(descriptor, element.getSuperclass());
 		}
+	}
+
+	private String getJavaDoc(RecordComponentElement recordComponent) {
+		String recordJavadoc = this.env.getElementUtils().getDocComment(recordComponent.getEnclosingElement());
+		if (recordJavadoc != null) {
+			Pattern paramJavadocPattern = paramJavadocPattern(recordComponent.getSimpleName().toString());
+			Matcher paramJavadocMatcher = paramJavadocPattern.matcher(recordJavadoc);
+			if (paramJavadocMatcher.find()) {
+				String paramJavadoc = cleanUpJavaDoc(paramJavadocMatcher.group());
+				return paramJavadoc.isEmpty() ? null : paramJavadoc;
+			}
+		}
+		return null;
+	}
+
+	private Pattern paramJavadocPattern(String paramName) {
+		String pattern = String.format("(?<=@param +%s).*?(?=([\r\n]+ *@)|$)", paramName);
+		return Pattern.compile(pattern, Pattern.DOTALL);
+	}
+
+	private String cleanUpJavaDoc(String javadoc) {
+		StringBuilder result = new StringBuilder(javadoc.length());
+		char lastChar = '.';
+		for (int i = 0; i < javadoc.length(); i++) {
+			char ch = javadoc.charAt(i);
+			boolean repeatedSpace = ch == ' ' && lastChar == ' ';
+			if (ch != '\r' && ch != '\n' && !repeatedSpace) {
+				result.append(ch);
+				lastChar = ch;
+			}
+		}
+		return result.toString().trim();
 	}
 
 	/**
@@ -267,9 +302,12 @@ class TypeUtils {
 			}
 			StringBuilder name = new StringBuilder();
 			name.append(qualifiedName);
-			name.append("<").append(
-					type.getTypeArguments().stream().map((t) -> visit(t, descriptor)).collect(Collectors.joining(",")))
-					.append(">");
+			name.append("<")
+				.append(type.getTypeArguments()
+					.stream()
+					.map((t) -> visit(t, descriptor))
+					.collect(Collectors.joining(",")))
+				.append(">");
 			return name.toString();
 		}
 
@@ -284,8 +322,7 @@ class TypeUtils {
 		public String visitTypeVariable(TypeVariable t, TypeDescriptor descriptor) {
 			TypeMirror typeMirror = descriptor.resolveGeneric(t);
 			if (typeMirror != null) {
-				if (typeMirror instanceof TypeVariable) {
-					TypeVariable typeVariable = (TypeVariable) typeMirror;
+				if (typeMirror instanceof TypeVariable typeVariable) {
 					// Still unresolved, let's use the upper bound, checking first if
 					// a cycle may exist
 					if (!hasCycle(typeVariable)) {
@@ -302,9 +339,8 @@ class TypeUtils {
 
 		private boolean hasCycle(TypeVariable variable) {
 			TypeMirror upperBound = variable.getUpperBound();
-			if (upperBound instanceof DeclaredType) {
-				return ((DeclaredType) upperBound).getTypeArguments().stream()
-						.anyMatch((candidate) -> candidate.equals(variable));
+			if (upperBound instanceof DeclaredType declaredType) {
+				return declaredType.getTypeArguments().stream().anyMatch((candidate) -> candidate.equals(variable));
 			}
 			return false;
 		}
@@ -333,18 +369,17 @@ class TypeUtils {
 				return getQualifiedName(enclosingElement) + "$"
 						+ ((DeclaredType) element.asType()).asElement().getSimpleName();
 			}
-			if (element instanceof TypeElement) {
-				return ((TypeElement) element).getQualifiedName().toString();
+			if (element instanceof TypeElement typeElement) {
+				return typeElement.getQualifiedName().toString();
 			}
 			throw new IllegalStateException("Could not extract qualified name from " + element);
 		}
 
 		private TypeElement getEnclosingTypeElement(TypeMirror type) {
-			if (type instanceof DeclaredType) {
-				DeclaredType declaredType = (DeclaredType) type;
+			if (type instanceof DeclaredType declaredType) {
 				Element enclosingElement = declaredType.asElement().getEnclosingElement();
-				if (enclosingElement instanceof TypeElement) {
-					return (TypeElement) enclosingElement;
+				if (enclosingElement instanceof TypeElement typeElement) {
+					return typeElement;
 				}
 			}
 			return null;
@@ -368,15 +403,19 @@ class TypeUtils {
 		}
 
 		TypeMirror resolveGeneric(String parameterName) {
-			return this.generics.entrySet().stream().filter((e) -> getParameterName(e.getKey()).equals(parameterName))
-					.findFirst().map(Entry::getValue).orElse(null);
+			return this.generics.entrySet()
+				.stream()
+				.filter((e) -> getParameterName(e.getKey()).equals(parameterName))
+				.findFirst()
+				.map(Entry::getValue)
+				.orElse(null);
 		}
 
 		private void registerIfNecessary(TypeMirror variable, TypeMirror resolution) {
-			if (variable instanceof TypeVariable) {
-				TypeVariable typeVariable = (TypeVariable) variable;
-				if (this.generics.keySet().stream()
-						.noneMatch((candidate) -> getParameterName(candidate).equals(getParameterName(typeVariable)))) {
+			if (variable instanceof TypeVariable typeVariable) {
+				if (this.generics.keySet()
+					.stream()
+					.noneMatch((candidate) -> getParameterName(candidate).equals(getParameterName(typeVariable)))) {
 					this.generics.put(typeVariable, resolution);
 				}
 			}

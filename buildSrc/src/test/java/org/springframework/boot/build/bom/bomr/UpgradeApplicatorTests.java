@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2021 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,8 +20,8 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.util.Collections;
 import java.util.Properties;
 
 import org.junit.jupiter.api.Test;
@@ -49,29 +49,16 @@ class UpgradeApplicatorTests {
 	void whenUpgradeIsAppliedToLibraryWithVersionThenBomIsUpdated() throws IOException {
 		File bom = new File(this.temp, "bom.gradle");
 		FileCopyUtils.copy(new File("src/test/resources/bom.gradle"), bom);
-		String originalContents = new String(Files.readAllBytes(bom.toPath()), StandardCharsets.UTF_8);
-		File gradleProperties = new File(this.temp, "gradle.properties");
-		FileCopyUtils.copy(new File("src/test/resources/gradle.properties"), gradleProperties);
-		new UpgradeApplicator(bom.toPath(), gradleProperties.toPath()).apply(new Upgrade(
-				new Library("ActiveMQ", new LibraryVersion(DependencyVersion.parse("5.15.11"), null), null, null, null),
-				DependencyVersion.parse("5.16")));
-		String bomContents = new String(Files.readAllBytes(bom.toPath()), StandardCharsets.UTF_8);
-		assertThat(bomContents.length()).isEqualTo(originalContents.length() - 3);
-	}
-
-	@Test
-	void whenUpgradeIsAppliedToLibraryWithAlignedVersionThenBomIsUpdated() throws IOException {
-		File bom = new File(this.temp, "bom.gradle");
-		FileCopyUtils.copy(new File("src/test/resources/bom.gradle"), bom);
-		String originalContents = new String(Files.readAllBytes(bom.toPath()), StandardCharsets.UTF_8);
+		String originalContents = Files.readString(bom.toPath());
 		File gradleProperties = new File(this.temp, "gradle.properties");
 		FileCopyUtils.copy(new File("src/test/resources/gradle.properties"), gradleProperties);
 		new UpgradeApplicator(bom.toPath(), gradleProperties.toPath()).apply(
-				new Upgrade(new Library("OAuth2 OIDC SDK", new LibraryVersion(DependencyVersion.parse("8.36.1"), null),
-						null, null, null), DependencyVersion.parse("8.36.2")));
-		String bomContents = new String(Files.readAllBytes(bom.toPath()), StandardCharsets.UTF_8);
-		assertThat(bomContents.length()).isEqualTo(originalContents.length());
-		assertThat(bomContents).contains("version(\"8.36.2\")");
+				new Upgrade(
+						new Library("ActiveMQ", null, new LibraryVersion(DependencyVersion.parse("5.15.11")), null,
+								null, false, null, null, null, Collections.emptyMap()),
+						DependencyVersion.parse("5.16")));
+		String bomContents = Files.readString(bom.toPath());
+		assertThat(bomContents).hasSize(originalContents.length() - 3);
 	}
 
 	@Test
@@ -80,9 +67,9 @@ class UpgradeApplicatorTests {
 		FileCopyUtils.copy(new File("src/test/resources/bom.gradle"), bom);
 		File gradleProperties = new File(this.temp, "gradle.properties");
 		FileCopyUtils.copy(new File("src/test/resources/gradle.properties"), gradleProperties);
-		new UpgradeApplicator(bom.toPath(), gradleProperties.toPath()).apply(new Upgrade(
-				new Library("Kotlin", new LibraryVersion(DependencyVersion.parse("1.3.70"), null), null, null, null),
-				DependencyVersion.parse("1.4")));
+		new UpgradeApplicator(bom.toPath(), gradleProperties.toPath())
+			.apply(new Upgrade(new Library("Kotlin", null, new LibraryVersion(DependencyVersion.parse("1.3.70")), null,
+					null, false, null, null, null, Collections.emptyMap()), DependencyVersion.parse("1.4")));
 		Properties properties = new Properties();
 		try (InputStream in = new FileInputStream(gradleProperties)) {
 			properties.load(in);

@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2022 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -26,6 +26,8 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.test.web.reactive.server.WebTestClient;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.RequestBuilder;
+import org.springframework.test.web.servlet.assertj.MockMvcTester;
 import org.springframework.web.reactive.function.client.WebClient;
 import org.springframework.web.servlet.DispatcherServlet;
 
@@ -43,7 +45,7 @@ import static org.mockito.Mockito.mock;
 class MockMvcAutoConfigurationTests {
 
 	private final WebApplicationContextRunner contextRunner = new WebApplicationContextRunner()
-			.withConfiguration(AutoConfigurations.of(MockMvcAutoConfiguration.class));
+		.withConfiguration(AutoConfigurations.of(MockMvcAutoConfiguration.class));
 
 	@Test
 	void registersDispatcherServletFromMockMvc() {
@@ -55,6 +57,28 @@ class MockMvcAutoConfigurationTests {
 	}
 
 	@Test
+	void registersMockMvcTester() {
+		this.contextRunner.run((context) -> assertThat(context).hasSingleBean(MockMvcTester.class));
+	}
+
+	@Test
+	void shouldNotRegisterMockMvcTesterIfAssertJMissing() {
+		this.contextRunner.withClassLoader(new FilteredClassLoader(org.assertj.core.api.Assert.class))
+			.run((context) -> assertThat(context).doesNotHaveBean(MockMvcTester.class));
+	}
+
+	@Test
+	void registeredMockMvcTesterDelegatesToConfiguredMockMvc() {
+		MockMvc mockMvc = mock(MockMvc.class);
+		this.contextRunner.withBean("customMockMvc", MockMvc.class, () -> mockMvc).run((context) -> {
+			assertThat(context).hasSingleBean(MockMvc.class).hasSingleBean(MockMvcTester.class);
+			MockMvcTester mvc = context.getBean(MockMvcTester.class);
+			mvc.get().uri("/dummy").exchange();
+			then(mockMvc).should().perform(any(RequestBuilder.class));
+		});
+	}
+
+	@Test
 	void registersWebTestClient() {
 		this.contextRunner.run((context) -> assertThat(context).hasSingleBean(WebTestClient.class));
 	}
@@ -62,7 +86,7 @@ class MockMvcAutoConfigurationTests {
 	@Test
 	void shouldNotRegisterWebTestClientIfWebFluxMissing() {
 		this.contextRunner.withClassLoader(new FilteredClassLoader(WebClient.class))
-				.run((context) -> assertThat(context).doesNotHaveBean(WebTestClient.class));
+			.run((context) -> assertThat(context).doesNotHaveBean(WebTestClient.class));
 	}
 
 	@Test
@@ -71,7 +95,7 @@ class MockMvcAutoConfigurationTests {
 			assertThat(context).hasSingleBean(WebTestClient.class);
 			assertThat(context).hasBean("myWebTestClientCustomizer");
 			then(context.getBean("myWebTestClientCustomizer", WebTestClientBuilderCustomizer.class)).should()
-					.customize(any(WebTestClient.Builder.class));
+				.customize(any(WebTestClient.Builder.class));
 		});
 	}
 

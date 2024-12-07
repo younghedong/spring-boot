@@ -1,10 +1,10 @@
 plugins {
-    id "java-library"
+	id "java-library"
 	id "org.springframework.boot.auto-configuration"
-	id "org.springframework.boot.conventions"
+	id "org.springframework.boot.configuration-properties"
 	id "org.springframework.boot.deployed"
 	id "org.springframework.boot.integration-test"
-    id "org.springframework.boot.optional-dependencies"
+	id "org.springframework.boot.optional-dependencies"
 }
 
 description = "Spring Boot Developer Tools"
@@ -31,9 +31,7 @@ dependencies {
 	intTestImplementation(project(":spring-boot-project:spring-boot-autoconfigure"))
 	intTestImplementation(project(":spring-boot-project:spring-boot-test"))
 	intTestImplementation(project(":spring-boot-project:spring-boot-tools:spring-boot-test-support"))
-	intTestImplementation("org.apache.httpcomponents:httpclient") {
-		exclude group: "commons-logging", module: "commons-logging"
-	}
+	intTestImplementation("org.apache.httpcomponents.client5:httpclient5")
 	intTestImplementation("org.assertj:assertj-core")
 	intTestImplementation("org.awaitility:awaitility")
 	intTestImplementation("org.junit.jupiter:junit-jupiter")
@@ -45,7 +43,7 @@ dependencies {
 	optional("io.r2dbc:r2dbc-spi")
 	optional("jakarta.servlet:jakarta.servlet-api")
 	optional("org.apache.derby:derbytools")
-	optional("org.hibernate:hibernate-core-jakarta")
+	optional("org.hibernate.orm:hibernate-core")
 	optional("org.springframework:spring-jdbc")
 	optional("org.springframework:spring-orm")
 	optional("org.springframework:spring-web")
@@ -66,7 +64,7 @@ dependencies {
 	testImplementation("org.apache.tomcat.embed:tomcat-embed-jasper")
 	testImplementation("org.assertj:assertj-core")
 	testImplementation("org.awaitility:awaitility")
-	testImplementation("org.eclipse.jetty.websocket:websocket-jakarta-client")
+	testImplementation("org.eclipse.jetty.ee10.websocket:jetty-ee10-websocket-jakarta-client")
 	testImplementation("org.hamcrest:hamcrest-library")
 	testImplementation("org.hsqldb:hsqldb")
 	testImplementation("org.junit.jupiter:junit-jupiter")
@@ -86,7 +84,7 @@ dependencies {
 }
 
 task syncIntTestDependencies(type: Sync) {
-	destinationDir = file("${buildDir}/dependencies")
+	destinationDir = file(layout.buildDirectory.dir("dependencies"))
 	from {
 		configurations.intTestDependencies
 	}

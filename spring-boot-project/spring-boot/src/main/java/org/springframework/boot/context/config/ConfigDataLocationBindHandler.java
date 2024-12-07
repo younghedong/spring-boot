@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2021 the original author or authors.
+ * Copyright 2012-2023 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,6 +16,7 @@
 
 package org.springframework.boot.context.config;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
@@ -38,28 +39,22 @@ import org.springframework.boot.origin.Origin;
 class ConfigDataLocationBindHandler extends AbstractBindHandler {
 
 	@Override
-	@SuppressWarnings("unchecked")
 	public Object onSuccess(ConfigurationPropertyName name, Bindable<?> target, BindContext context, Object result) {
-		if (result instanceof ConfigDataLocation) {
-			return withOrigin(context, (ConfigDataLocation) result);
+		if (result instanceof ConfigDataLocation location) {
+			return withOrigin(context, location);
 		}
-		if (result instanceof List) {
-			List<Object> list = ((List<Object>) result).stream().filter(Objects::nonNull).collect(Collectors.toList());
-			for (int i = 0; i < list.size(); i++) {
-				Object element = list.get(i);
-				if (element instanceof ConfigDataLocation) {
-					list.set(i, withOrigin(context, (ConfigDataLocation) element));
-				}
-			}
-			return list;
+		if (result instanceof List<?> list) {
+			return list.stream()
+				.filter(Objects::nonNull)
+				.map((element) -> (element instanceof ConfigDataLocation location) ? withOrigin(context, location)
+						: element)
+				.collect(Collectors.toCollection(ArrayList::new));
 		}
-		if (result instanceof ConfigDataLocation[]) {
-			ConfigDataLocation[] locations = Arrays.stream((ConfigDataLocation[]) result).filter(Objects::nonNull)
-					.toArray(ConfigDataLocation[]::new);
-			for (int i = 0; i < locations.length; i++) {
-				locations[i] = withOrigin(context, locations[i]);
-			}
-			return locations;
+		if (result instanceof ConfigDataLocation[] unfilteredLocations) {
+			return Arrays.stream(unfilteredLocations)
+				.filter(Objects::nonNull)
+				.map((element) -> withOrigin(context, element))
+				.toArray(ConfigDataLocation[]::new);
 		}
 		return result;
 	}

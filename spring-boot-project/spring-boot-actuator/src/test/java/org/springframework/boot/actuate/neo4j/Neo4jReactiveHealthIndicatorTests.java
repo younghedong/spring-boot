@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2022 the original author or authors.
+ * Copyright 2012-2023 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,6 +16,7 @@
 
 package org.springframework.boot.actuate.neo4j;
 
+import java.time.Duration;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import org.junit.jupiter.api.Test;
@@ -25,9 +26,10 @@ import org.neo4j.driver.SessionConfig;
 import org.neo4j.driver.Values;
 import org.neo4j.driver.exceptions.ServiceUnavailableException;
 import org.neo4j.driver.exceptions.SessionExpiredException;
-import org.neo4j.driver.reactive.RxResult;
-import org.neo4j.driver.reactive.RxSession;
+import org.neo4j.driver.reactivestreams.ReactiveResult;
+import org.neo4j.driver.reactivestreams.ReactiveSession;
 import org.neo4j.driver.summary.ResultSummary;
+import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
 
@@ -36,6 +38,7 @@ import org.springframework.boot.actuate.health.Status;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
 import static org.mockito.Mockito.mock;
@@ -46,6 +49,7 @@ import static org.mockito.Mockito.times;
  *
  * @author Michael J. Simons
  * @author Stephane Nicoll
+ * @author Brian Clozel
  */
 class Neo4jReactiveHealthIndicatorTests {
 
@@ -58,59 +62,60 @@ class Neo4jReactiveHealthIndicatorTests {
 			assertThat(health.getStatus()).isEqualTo(Status.UP);
 			assertThat(health.getDetails()).containsEntry("server", "4711@My Home");
 			assertThat(health.getDetails()).containsEntry("edition", "ultimate collectors edition");
-		}).verifyComplete();
+		}).expectComplete().verify(Duration.ofSeconds(30));
 	}
 
 	@Test
 	void neo4jIsUpWithOneSessionExpiredException() {
 		ResultSummary resultSummary = ResultSummaryMock.createResultSummary("My Home", "");
-		RxSession session = mock(RxSession.class);
-		RxResult statementResult = mockStatementResult(resultSummary, "4711", "some edition");
+		ReactiveSession session = mock(ReactiveSession.class);
+		ReactiveResult statementResult = mockStatementResult(resultSummary, "4711", "some edition");
 		AtomicInteger count = new AtomicInteger();
 		given(session.run(anyString())).will((invocation) -> {
 			if (count.compareAndSet(0, 1)) {
-				throw new SessionExpiredException("Session expired");
+				return Flux.error(new SessionExpiredException("Session expired"));
 			}
-			return statementResult;
+			return Flux.just(statementResult);
 		});
 		Driver driver = mock(Driver.class);
-		given(driver.rxSession(any(SessionConfig.class))).willReturn(session);
+		given(driver.session(eq(ReactiveSession.class), any(SessionConfig.class))).willReturn(session);
 		Neo4jReactiveHealthIndicator healthIndicator = new Neo4jReactiveHealthIndicator(driver);
 		healthIndicator.health().as(StepVerifier::create).consumeNextWith((health) -> {
 			assertThat(health.getStatus()).isEqualTo(Status.UP);
 			assertThat(health.getDetails()).containsEntry("server", "4711@My Home");
 			assertThat(health.getDetails()).containsEntry("edition", "some edition");
-		}).verifyComplete();
+		}).expectComplete().verify(Duration.ofSeconds(30));
 		then(session).should(times(2)).close();
 	}
 
 	@Test
 	void neo4jIsDown() {
 		Driver driver = mock(Driver.class);
-		given(driver.rxSession(any(SessionConfig.class))).willThrow(ServiceUnavailableException.class);
+		given(driver.session(eq(ReactiveSession.class), any(SessionConfig.class)))
+			.willThrow(ServiceUnavailableException.class);
 		Neo4jReactiveHealthIndicator healthIndicator = new Neo4jReactiveHealthIndicator(driver);
 		healthIndicator.health().as(StepVerifier::create).consumeNextWith((health) -> {
 			assertThat(health.getStatus()).isEqualTo(Status.DOWN);
 			assertThat(health.getDetails()).containsKeys("error");
-		}).verifyComplete();
+		}).expectComplete().verify(Duration.ofSeconds(30));
 	}
 
-	private RxResult mockStatementResult(ResultSummary resultSummary, String version, String edition) {
+	private ReactiveResult mockStatementResult(ResultSummary resultSummary, String version, String edition) {
 		Record record = mock(Record.class);
 		given(record.get("edition")).willReturn(Values.value(edition));
 		given(record.get("version")).willReturn(Values.value(version));
-		RxResult statementResult = mock(RxResult.class);
+		ReactiveResult statementResult = mock(ReactiveResult.class);
 		given(statementResult.records()).willReturn(Mono.just(record));
 		given(statementResult.consume()).willReturn(Mono.just(resultSummary));
 		return statementResult;
 	}
 
 	private Driver mockDriver(ResultSummary resultSummary, String version, String edition) {
-		RxResult statementResult = mockStatementResult(resultSummary, version, edition);
-		RxSession session = mock(RxSession.class);
-		given(session.run(anyString())).willReturn(statementResult);
+		ReactiveResult statementResult = mockStatementResult(resultSummary, version, edition);
+		ReactiveSession session = mock(ReactiveSession.class);
+		given(session.run(anyString())).willReturn(Mono.just(statementResult));
 		Driver driver = mock(Driver.class);
-		given(driver.rxSession(any(SessionConfig.class))).willReturn(session);
+		given(driver.session(eq(ReactiveSession.class), any(SessionConfig.class))).willReturn(session);
 		return driver;
 	}
 

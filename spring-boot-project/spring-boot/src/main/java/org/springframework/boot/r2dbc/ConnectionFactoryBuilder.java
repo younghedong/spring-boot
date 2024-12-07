@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2022 the original author or authors.
+ * Copyright 2012-2023 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,6 +17,8 @@
 package org.springframework.boot.r2dbc;
 
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Locale;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -43,6 +45,7 @@ import org.springframework.util.ClassUtils;
  * @author Tadaya Tsuyukubo
  * @author Stephane Nicoll
  * @author Andy Wilkinson
+ * @author Moritz Halbritter
  * @since 2.5.0
  */
 public final class ConnectionFactoryBuilder {
@@ -61,6 +64,8 @@ public final class ConnectionFactoryBuilder {
 	private static final String COLON = ":";
 
 	private final Builder optionsBuilder;
+
+	private final List<ConnectionFactoryDecorator> decorators = new ArrayList<>();
 
 	private ConnectionFactoryBuilder(Builder optionsBuilder) {
 		this.optionsBuilder = optionsBuilder;
@@ -169,12 +174,40 @@ public final class ConnectionFactoryBuilder {
 	}
 
 	/**
+	 * Add a {@link ConnectionFactoryDecorator decorator}.
+	 * @param decorator the decorator to add
+	 * @return this for method chaining
+	 * @since 3.2.0
+	 */
+	public ConnectionFactoryBuilder decorator(ConnectionFactoryDecorator decorator) {
+		this.decorators.add(decorator);
+		return this;
+	}
+
+	/**
+	 * Add {@link ConnectionFactoryDecorator decorators}.
+	 * @param decorators the decorators to add
+	 * @return this for method chaining
+	 * @since 3.2.0
+	 */
+	public ConnectionFactoryBuilder decorators(Iterable<ConnectionFactoryDecorator> decorators) {
+		for (ConnectionFactoryDecorator decorator : decorators) {
+			this.decorators.add(decorator);
+		}
+		return this;
+	}
+
+	/**
 	 * Build a {@link ConnectionFactory} based on the state of this builder.
 	 * @return a connection factory
 	 */
 	public ConnectionFactory build() {
 		ConnectionFactoryOptions options = buildOptions();
-		return optionsCapableWrapper.buildAndWrap(options);
+		ConnectionFactory connectionFactory = optionsCapableWrapper.buildAndWrap(options);
+		for (ConnectionFactoryDecorator decorator : this.decorators) {
+			connectionFactory = decorator.decorate(connectionFactory);
+		}
+		return connectionFactory;
 	}
 
 	/**
@@ -212,15 +245,17 @@ public final class ConnectionFactoryBuilder {
 
 		private ConnectionFactoryOptions delegateFactoryOptions(ConnectionFactoryOptions options) {
 			String protocol = toString(options.getRequiredValue(ConnectionFactoryOptions.PROTOCOL));
-			if (protocol.trim().length() == 0) {
+			if (protocol.trim().isEmpty()) {
 				throw new IllegalArgumentException(String.format("Protocol %s is not valid.", protocol));
 			}
 			String[] protocols = protocol.split(COLON, 2);
 			String driverDelegate = protocols[0];
 			String protocolDelegate = (protocols.length != 2) ? "" : protocols[1];
-			return ConnectionFactoryOptions.builder().from(options)
-					.option(ConnectionFactoryOptions.DRIVER, driverDelegate)
-					.option(ConnectionFactoryOptions.PROTOCOL, protocolDelegate).build();
+			return ConnectionFactoryOptions.builder()
+				.from(options)
+				.option(ConnectionFactoryOptions.DRIVER, driverDelegate)
+				.option(ConnectionFactoryOptions.PROTOCOL, protocolDelegate)
+				.build();
 		}
 
 		@SuppressWarnings("unchecked")
@@ -229,32 +264,51 @@ public final class ConnectionFactoryBuilder {
 			ConnectionPoolConfiguration.Builder builder = ConnectionPoolConfiguration.builder(connectionFactory);
 			PropertyMapper map = PropertyMapper.get().alwaysApplyingWhenNonNull();
 			map.from(options.getValue(PoolingConnectionFactoryProvider.BACKGROUND_EVICTION_INTERVAL))
-					.as(this::toDuration).to(builder::backgroundEvictionInterval);
-			map.from(options.getValue(PoolingConnectionFactoryProvider.INITIAL_SIZE)).as(this::toInteger)
-					.to(builder::initialSize);
-			map.from(options.getValue(PoolingConnectionFactoryProvider.MAX_SIZE)).as(this::toInteger)
-					.to(builder::maxSize);
-			map.from(options.getValue(PoolingConnectionFactoryProvider.ACQUIRE_RETRY)).as(this::toInteger)
-					.to(builder::acquireRetry);
-			map.from(options.getValue(PoolingConnectionFactoryProvider.MAX_LIFE_TIME)).as(this::toDuration)
-					.to(builder::maxLifeTime);
-			map.from(options.getValue(PoolingConnectionFactoryProvider.MAX_ACQUIRE_TIME)).as(this::toDuration)
-					.to(builder::maxAcquireTime);
-			map.from(options.getValue(PoolingConnectionFactoryProvider.MAX_IDLE_TIME)).as(this::toDuration)
-					.to(builder::maxIdleTime);
-			map.from(options.getValue(PoolingConnectionFactoryProvider.MAX_CREATE_CONNECTION_TIME)).as(this::toDuration)
-					.to(builder::maxCreateConnectionTime);
+				.as(this::toDuration)
+				.to(builder::backgroundEvictionInterval);
+			map.from(options.getValue(PoolingConnectionFactoryProvider.INITIAL_SIZE))
+				.as(this::toInteger)
+				.to(builder::initialSize);
+			map.from(options.getValue(PoolingConnectionFactoryProvider.MAX_SIZE))
+				.as(this::toInteger)
+				.to(builder::maxSize);
+			map.from(options.getValue(PoolingConnectionFactoryProvider.ACQUIRE_RETRY))
+				.as(this::toInteger)
+				.to(builder::acquireRetry);
+			map.from(options.getValue(PoolingConnectionFactoryProvider.MAX_LIFE_TIME))
+				.as(this::toDuration)
+				.to(builder::maxLifeTime);
+			map.from(options.getValue(PoolingConnectionFactoryProvider.MAX_ACQUIRE_TIME))
+				.as(this::toDuration)
+				.to(builder::maxAcquireTime);
+			map.from(options.getValue(PoolingConnectionFactoryProvider.MAX_IDLE_TIME))
+				.as(this::toDuration)
+				.to(builder::maxIdleTime);
+			map.from(options.getValue(PoolingConnectionFactoryProvider.MAX_CREATE_CONNECTION_TIME))
+				.as(this::toDuration)
+				.to(builder::maxCreateConnectionTime);
+			map.from(options.getValue(PoolingConnectionFactoryProvider.MAX_VALIDATION_TIME))
+				.as(this::toDuration)
+				.to(builder::maxValidationTime);
+			map.from(options.getValue(PoolingConnectionFactoryProvider.MIN_IDLE))
+				.as(this::toInteger)
+				.to(builder::minIdle);
 			map.from(options.getValue(PoolingConnectionFactoryProvider.POOL_NAME)).as(this::toString).to(builder::name);
-			map.from(options.getValue(PoolingConnectionFactoryProvider.PRE_RELEASE)).to((function) -> builder
+			map.from(options.getValue(PoolingConnectionFactoryProvider.PRE_RELEASE))
+				.to((function) -> builder
 					.preRelease((Function<? super Connection, ? extends Publisher<Void>>) function));
-			map.from(options.getValue(PoolingConnectionFactoryProvider.POST_ALLOCATE)).to((function) -> builder
+			map.from(options.getValue(PoolingConnectionFactoryProvider.POST_ALLOCATE))
+				.to((function) -> builder
 					.postAllocate((Function<? super Connection, ? extends Publisher<Void>>) function));
-			map.from(options.getValue(PoolingConnectionFactoryProvider.REGISTER_JMX)).as(this::toBoolean)
-					.to(builder::registerJmx);
-			map.from(options.getValue(PoolingConnectionFactoryProvider.VALIDATION_QUERY)).as(this::toString)
-					.to(builder::validationQuery);
-			map.from(options.getValue(PoolingConnectionFactoryProvider.VALIDATION_DEPTH)).as(this::toValidationDepth)
-					.to(builder::validationDepth);
+			map.from(options.getValue(PoolingConnectionFactoryProvider.REGISTER_JMX))
+				.as(this::toBoolean)
+				.to(builder::registerJmx);
+			map.from(options.getValue(PoolingConnectionFactoryProvider.VALIDATION_QUERY))
+				.as(this::toString)
+				.to(builder::validationQuery);
+			map.from(options.getValue(PoolingConnectionFactoryProvider.VALIDATION_DEPTH))
+				.as(this::toValidationDepth)
+				.to(builder::validationDepth);
 			return builder.build();
 		}
 
@@ -283,8 +337,8 @@ public final class ConnectionFactoryBuilder {
 			if (type.isInstance(object)) {
 				return type.cast(object);
 			}
-			if (object instanceof String) {
-				return converter.apply((String) object);
+			if (object instanceof String string) {
+				return converter.apply(string);
 			}
 			throw new IllegalArgumentException("Cannot convert '" + object + "' to " + type.getName());
 		}

@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2022 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -61,8 +61,8 @@ public class DataSourceProperties implements BeanClassLoaderAware, InitializingB
 	private String name;
 
 	/**
-	 * Fully qualified name of the connection pool implementation to use. By default, it
-	 * is auto-detected from the classpath.
+	 * Fully qualified name of the DataSource implementation to use. By default, a
+	 * connection pool implementation is auto-detected from the classpath.
 	 */
 	private Class<? extends DataSource> type;
 
@@ -120,8 +120,12 @@ public class DataSourceProperties implements BeanClassLoaderAware, InitializingB
 	 * this instance
 	 */
 	public DataSourceBuilder<?> initializeDataSourceBuilder() {
-		return DataSourceBuilder.create(getClassLoader()).type(getType()).driverClassName(determineDriverClassName())
-				.url(determineUrl()).username(determineUsername()).password(determinePassword());
+		return DataSourceBuilder.create(getClassLoader())
+			.type(getType())
+			.driverClassName(determineDriverClassName())
+			.url(determineUrl())
+			.username(determineUsername())
+			.password(determinePassword());
 	}
 
 	public boolean isGenerateUniqueName() {
@@ -195,7 +199,6 @@ public class DataSourceProperties implements BeanClassLoaderAware, InitializingB
 			throw ex;
 		}
 		catch (Throwable ex) {
-			ex.printStackTrace();
 			return false;
 		}
 	}
@@ -313,7 +316,7 @@ public class DataSourceProperties implements BeanClassLoaderAware, InitializingB
 	}
 
 	/**
-	 * Allows the DataSource to be managed by the container and obtained via JNDI. The
+	 * Allows the DataSource to be managed by the container and obtained through JNDI. The
 	 * {@code URL}, {@code driverClassName}, {@code username} and {@code password} fields
 	 * will be ignored when using JNDI lookups.
 	 * @param jndiName the JNDI name

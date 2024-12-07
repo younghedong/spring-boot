@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2022 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -52,61 +52,61 @@ class PackagingDocumentationTests {
 
 	@TestTemplate
 	void warContainerDependencyEvaluatesSuccessfully() {
-		this.gradleBuild.script("src/docs/gradle/packaging/war-container-dependency").build();
+		this.gradleBuild.script(Examples.DIR + "packaging/war-container-dependency").build();
 	}
 
 	@TestTemplate
 	void bootJarMainClass() throws IOException {
-		this.gradleBuild.script("src/docs/gradle/packaging/boot-jar-main-class").build("bootJar");
+		this.gradleBuild.script(Examples.DIR + "packaging/boot-jar-main-class").build("bootJar");
 		File file = new File(this.gradleBuild.getProjectDir(),
 				"build/libs/" + this.gradleBuild.getProjectDir().getName() + ".jar");
 		assertThat(file).isFile();
 		try (JarFile jar = new JarFile(file)) {
 			assertThat(jar.getManifest().getMainAttributes().getValue("Start-Class"))
-					.isEqualTo("com.example.ExampleApplication");
+				.isEqualTo("com.example.ExampleApplication");
 		}
 	}
 
 	@TestTemplate
 	void bootJarManifestMainClass() throws IOException {
-		this.gradleBuild.script("src/docs/gradle/packaging/boot-jar-manifest-main-class").build("bootJar");
+		this.gradleBuild.script(Examples.DIR + "packaging/boot-jar-manifest-main-class").build("bootJar");
 		File file = new File(this.gradleBuild.getProjectDir(),
 				"build/libs/" + this.gradleBuild.getProjectDir().getName() + ".jar");
 		assertThat(file).isFile();
 		try (JarFile jar = new JarFile(file)) {
 			assertThat(jar.getManifest().getMainAttributes().getValue("Start-Class"))
-					.isEqualTo("com.example.ExampleApplication");
+				.isEqualTo("com.example.ExampleApplication");
 		}
 	}
 
 	@TestTemplate
 	void applicationPluginMainClass() throws IOException {
-		this.gradleBuild.script("src/docs/gradle/packaging/application-plugin-main-class").build("bootJar");
+		this.gradleBuild.script(Examples.DIR + "packaging/application-plugin-main-class").build("bootJar");
 		File file = new File(this.gradleBuild.getProjectDir(),
 				"build/libs/" + this.gradleBuild.getProjectDir().getName() + ".jar");
 		assertThat(file).isFile();
 		try (JarFile jar = new JarFile(file)) {
 			assertThat(jar.getManifest().getMainAttributes().getValue("Start-Class"))
-					.isEqualTo("com.example.ExampleApplication");
+				.isEqualTo("com.example.ExampleApplication");
 		}
 	}
 
 	@TestTemplate
 	void springBootDslMainClass() throws IOException {
-		this.gradleBuild.script("src/docs/gradle/packaging/spring-boot-dsl-main-class").build("bootJar");
+		this.gradleBuild.script(Examples.DIR + "packaging/spring-boot-dsl-main-class").build("bootJar");
 		File file = new File(this.gradleBuild.getProjectDir(),
 				"build/libs/" + this.gradleBuild.getProjectDir().getName() + ".jar");
 		assertThat(file).isFile();
 		try (JarFile jar = new JarFile(file)) {
 			assertThat(jar.getManifest().getMainAttributes().getValue("Start-Class"))
-					.isEqualTo("com.example.ExampleApplication");
+				.isEqualTo("com.example.ExampleApplication");
 		}
 	}
 
 	@TestTemplate
 	void bootWarIncludeDevtools() throws IOException {
 		jarFile(new File(this.gradleBuild.getProjectDir(), "spring-boot-devtools-1.2.3.RELEASE.jar"));
-		this.gradleBuild.script("src/docs/gradle/packaging/boot-war-include-devtools").build("bootWar");
+		this.gradleBuild.script(Examples.DIR + "packaging/boot-war-include-devtools").build("bootWar");
 		File file = new File(this.gradleBuild.getProjectDir(),
 				"build/libs/" + this.gradleBuild.getProjectDir().getName() + ".war");
 		assertThat(file).isFile();
@@ -117,7 +117,7 @@ class PackagingDocumentationTests {
 
 	@TestTemplate
 	void bootJarRequiresUnpack() throws IOException {
-		this.gradleBuild.script("src/docs/gradle/packaging/boot-jar-requires-unpack").build("bootJar");
+		this.gradleBuild.script(Examples.DIR + "packaging/boot-jar-requires-unpack").build("bootJar");
 		File file = new File(this.gradleBuild.getProjectDir(),
 				"build/libs/" + this.gradleBuild.getProjectDir().getName() + ".jar");
 		assertThat(file).isFile();
@@ -130,7 +130,7 @@ class PackagingDocumentationTests {
 
 	@TestTemplate
 	void bootJarIncludeLaunchScript() throws IOException {
-		this.gradleBuild.script("src/docs/gradle/packaging/boot-jar-include-launch-script").build("bootJar");
+		this.gradleBuild.script(Examples.DIR + "packaging/boot-jar-include-launch-script").build("bootJar");
 		File file = new File(this.gradleBuild.getProjectDir(),
 				"build/libs/" + this.gradleBuild.getProjectDir().getName() + ".jar");
 		assertThat(file).isFile();
@@ -139,7 +139,7 @@ class PackagingDocumentationTests {
 
 	@TestTemplate
 	void bootJarLaunchScriptProperties() throws IOException {
-		this.gradleBuild.script("src/docs/gradle/packaging/boot-jar-launch-script-properties").build("bootJar");
+		this.gradleBuild.script(Examples.DIR + "packaging/boot-jar-launch-script-properties").build("bootJar");
 		File file = new File(this.gradleBuild.getProjectDir(),
 				"build/libs/" + this.gradleBuild.getProjectDir().getName() + ".jar");
 		assertThat(file).isFile();
@@ -151,7 +151,7 @@ class PackagingDocumentationTests {
 		File customScriptFile = new File(this.gradleBuild.getProjectDir(), "src/custom.script");
 		customScriptFile.getParentFile().mkdirs();
 		FileCopyUtils.copy("custom", new FileWriter(customScriptFile));
-		this.gradleBuild.script("src/docs/gradle/packaging/boot-jar-custom-launch-script").build("bootJar");
+		this.gradleBuild.script(Examples.DIR + "packaging/boot-jar-custom-launch-script").build("bootJar");
 		File file = new File(this.gradleBuild.getProjectDir(),
 				"build/libs/" + this.gradleBuild.getProjectDir().getName() + ".jar");
 		assertThat(file).isFile();
@@ -160,19 +160,19 @@ class PackagingDocumentationTests {
 
 	@TestTemplate
 	void bootWarPropertiesLauncher() throws IOException {
-		this.gradleBuild.script("src/docs/gradle/packaging/boot-war-properties-launcher").build("bootWar");
+		this.gradleBuild.script(Examples.DIR + "packaging/boot-war-properties-launcher").build("bootWar");
 		File file = new File(this.gradleBuild.getProjectDir(),
 				"build/libs/" + this.gradleBuild.getProjectDir().getName() + ".war");
 		assertThat(file).isFile();
 		try (JarFile jar = new JarFile(file)) {
 			assertThat(jar.getManifest().getMainAttributes().getValue("Main-Class"))
-					.isEqualTo("org.springframework.boot.loader.PropertiesLauncher");
+				.isEqualTo("org.springframework.boot.loader.launch.PropertiesLauncher");
 		}
 	}
 
 	@TestTemplate
 	void onlyBootJar() throws IOException {
-		this.gradleBuild.script("src/docs/gradle/packaging/only-boot-jar").build("assemble");
+		this.gradleBuild.script(Examples.DIR + "packaging/only-boot-jar").build("assemble");
 		File plainJar = new File(this.gradleBuild.getProjectDir(),
 				"build/libs/" + this.gradleBuild.getProjectDir().getName() + "-plain.jar");
 		assertThat(plainJar).doesNotExist();
@@ -186,7 +186,7 @@ class PackagingDocumentationTests {
 
 	@TestTemplate
 	void classifiedBootJar() throws IOException {
-		this.gradleBuild.script("src/docs/gradle/packaging/boot-jar-and-jar-classifiers").build("assemble");
+		this.gradleBuild.script(Examples.DIR + "packaging/boot-jar-and-jar-classifiers").build("assemble");
 		File plainJar = new File(this.gradleBuild.getProjectDir(),
 				"build/libs/" + this.gradleBuild.getProjectDir().getName() + ".jar");
 		assertThat(plainJar).isFile();
@@ -203,7 +203,7 @@ class PackagingDocumentationTests {
 
 	@TestTemplate
 	void bootJarLayeredDisabled() throws IOException {
-		this.gradleBuild.script("src/docs/gradle/packaging/boot-jar-layered-disabled").build("bootJar");
+		this.gradleBuild.script(Examples.DIR + "packaging/boot-jar-layered-disabled").build("bootJar");
 		File file = new File(this.gradleBuild.getProjectDir(),
 				"build/libs/" + this.gradleBuild.getProjectDir().getName() + ".jar");
 		assertThat(file).isFile();
@@ -215,121 +215,145 @@ class PackagingDocumentationTests {
 
 	@TestTemplate
 	void bootJarLayeredCustom() throws IOException {
-		this.gradleBuild.script("src/docs/gradle/packaging/boot-jar-layered-custom").build("bootJar");
+		this.gradleBuild.script(Examples.DIR + "packaging/boot-jar-layered-custom").build("bootJar");
 		File file = new File(this.gradleBuild.getProjectDir(),
 				"build/libs/" + this.gradleBuild.getProjectDir().getName() + ".jar");
 		assertThat(file).isFile();
 		try (JarFile jar = new JarFile(file)) {
 			JarEntry entry = jar.getJarEntry("BOOT-INF/layers.idx");
 			assertThat(entry).isNotNull();
-			assertThat(Collections.list(jar.entries()).stream().map(JarEntry::getName)
-					.filter((name) -> name.startsWith("BOOT-INF/lib/spring-boot"))).isNotEmpty();
+			assertThat(Collections.list(jar.entries())
+				.stream()
+				.map(JarEntry::getName)
+				.filter((name) -> name.startsWith("BOOT-INF/lib/spring-boot"))).isNotEmpty();
 		}
 	}
 
 	@TestTemplate
 	void bootJarLayeredExcludeTools() throws IOException {
-		this.gradleBuild.script("src/docs/gradle/packaging/boot-jar-layered-exclude-tools").build("bootJar");
+		this.gradleBuild.script(Examples.DIR + "packaging/boot-jar-layered-exclude-tools").build("bootJar");
 		File file = new File(this.gradleBuild.getProjectDir(),
 				"build/libs/" + this.gradleBuild.getProjectDir().getName() + ".jar");
 		assertThat(file).isFile();
 		try (JarFile jar = new JarFile(file)) {
 			JarEntry entry = jar.getJarEntry("BOOT-INF/layers.idx");
 			assertThat(entry).isNotNull();
-			assertThat(Collections.list(jar.entries()).stream().map(JarEntry::getName)
-					.filter((name) -> name.startsWith("BOOT-INF/lib/spring-boot"))).isEmpty();
+			assertThat(Collections.list(jar.entries())
+				.stream()
+				.map(JarEntry::getName)
+				.filter((name) -> name.startsWith("BOOT-INF/lib/spring-boot"))).isEmpty();
 		}
 	}
 
 	@TestTemplate
 	void bootBuildImageWithBuilder() {
-		BuildResult result = this.gradleBuild.script("src/docs/gradle/packaging/boot-build-image-builder")
-				.build("bootBuildImageBuilder");
+		BuildResult result = this.gradleBuild.script(Examples.DIR + "packaging/boot-build-image-builder")
+			.build("bootBuildImageBuilder");
 		assertThat(result.getOutput()).contains("builder=mine/java-cnb-builder").contains("runImage=mine/java-cnb-run");
 	}
 
 	@TestTemplate
 	void bootBuildImageWithCustomBuildpackJvmVersion() {
-		BuildResult result = this.gradleBuild.script("src/docs/gradle/packaging/boot-build-image-env")
-				.build("bootBuildImageEnvironment");
-		assertThat(result.getOutput()).contains("BP_JVM_VERSION=8.*");
+		BuildResult result = this.gradleBuild.script(Examples.DIR + "packaging/boot-build-image-env")
+			.build("bootBuildImageEnvironment");
+		assertThat(result.getOutput()).contains("BP_JVM_VERSION=17");
 	}
 
 	@TestTemplate
 	void bootBuildImageWithCustomProxySettings() {
-		BuildResult result = this.gradleBuild.script("src/docs/gradle/packaging/boot-build-image-env-proxy")
-				.build("bootBuildImageEnvironment");
+		BuildResult result = this.gradleBuild.script(Examples.DIR + "packaging/boot-build-image-env-proxy")
+			.build("bootBuildImageEnvironment");
 		assertThat(result.getOutput()).contains("HTTP_PROXY=http://proxy.example.com")
-				.contains("HTTPS_PROXY=https://proxy.example.com");
+			.contains("HTTPS_PROXY=https://proxy.example.com");
 	}
 
 	@TestTemplate
 	void bootBuildImageWithCustomRuntimeConfiguration() {
-		BuildResult result = this.gradleBuild.script("src/docs/gradle/packaging/boot-build-image-env-runtime")
-				.build("bootBuildImageEnvironment");
+		BuildResult result = this.gradleBuild.script(Examples.DIR + "packaging/boot-build-image-env-runtime")
+			.build("bootBuildImageEnvironment");
 		assertThat(result.getOutput()).contains("BPE_DELIM_JAVA_TOOL_OPTIONS= ")
-				.contains("BPE_APPEND_JAVA_TOOL_OPTIONS=-XX:+HeapDumpOnOutOfMemoryError");
+			.contains("BPE_APPEND_JAVA_TOOL_OPTIONS=-XX:+HeapDumpOnOutOfMemoryError");
 	}
 
 	@TestTemplate
 	void bootBuildImageWithCustomImageName() {
-		BuildResult result = this.gradleBuild.script("src/docs/gradle/packaging/boot-build-image-name")
-				.build("bootBuildImageName");
+		BuildResult result = this.gradleBuild.script(Examples.DIR + "packaging/boot-build-image-name")
+			.build("bootBuildImageName");
 		assertThat(result.getOutput()).contains("example.com/library/" + this.gradleBuild.getProjectDir().getName());
 	}
 
 	@TestTemplate
 	void bootBuildImageWithDockerHostMinikube() {
-		BuildResult result = this.gradleBuild.script("src/docs/gradle/packaging/boot-build-image-docker-host")
-				.build("bootBuildImageDocker");
-		assertThat(result.getOutput()).contains("host=tcp://192.168.99.100:2376").contains("tlsVerify=true")
-				.contains("certPath=/home/user/.minikube/certs");
+		BuildResult result = this.gradleBuild.script(Examples.DIR + "packaging/boot-build-image-docker-host")
+			.build("bootBuildImageDocker");
+		assertThat(result.getOutput()).contains("host=tcp://192.168.99.100:2376")
+			.contains("tlsVerify=true")
+			.contains("certPath=/home/user/.minikube/certs");
 	}
 
 	@TestTemplate
 	void bootBuildImageWithDockerHostPodman() {
-		BuildResult result = this.gradleBuild.script("src/docs/gradle/packaging/boot-build-image-docker-host-podman")
-				.build("bootBuildImageDocker");
+		BuildResult result = this.gradleBuild.script(Examples.DIR + "packaging/boot-build-image-docker-host-podman")
+			.build("bootBuildImageDocker");
 		assertThat(result.getOutput()).contains("host=unix:///run/user/1000/podman/podman.sock")
-				.contains("bindHostToBuilder=true");
+			.contains("bindHostToBuilder=true");
+	}
+
+	@TestTemplate
+	void bootBuildImageWithDockerHostColima() {
+		BuildResult result = this.gradleBuild.script(Examples.DIR + "packaging/boot-build-image-docker-host-colima")
+			.build("bootBuildImageDocker");
+		assertThat(result.getOutput())
+			.contains("host=unix://" + System.getProperty("user.home") + "/.colima/docker.sock");
 	}
 
 	@TestTemplate
 	void bootBuildImageWithDockerUserAuth() {
-		BuildResult result = this.gradleBuild.script("src/docs/gradle/packaging/boot-build-image-docker-auth-user")
-				.build("bootBuildImageDocker");
-		assertThat(result.getOutput()).contains("username=user").contains("password=secret")
-				.contains("url=https://docker.example.com/v1/").contains("email=user@example.com");
+		BuildResult result = this.gradleBuild.script(Examples.DIR + "packaging/boot-build-image-docker-auth-user")
+			.build("bootBuildImageDocker");
+		assertThat(result.getOutput()).contains("username=user")
+			.contains("password=secret")
+			.contains("url=https://docker.example.com/v1/")
+			.contains("email=user@example.com");
 	}
 
 	@TestTemplate
 	void bootBuildImageWithDockerTokenAuth() {
-		BuildResult result = this.gradleBuild.script("src/docs/gradle/packaging/boot-build-image-docker-auth-token")
-				.build("bootBuildImageDocker");
+		BuildResult result = this.gradleBuild.script(Examples.DIR + "packaging/boot-build-image-docker-auth-token")
+			.build("bootBuildImageDocker");
 		assertThat(result.getOutput()).contains("token=9cbaf023786cd7...");
 	}
 
 	@TestTemplate
 	void bootBuildImagePublish() {
-		BuildResult result = this.gradleBuild.script("src/docs/gradle/packaging/boot-build-image-publish")
-				.build("bootBuildImagePublish");
+		BuildResult result = this.gradleBuild.script(Examples.DIR + "packaging/boot-build-image-publish")
+			.build("bootBuildImagePublish");
 		assertThat(result.getOutput()).contains("true");
 	}
 
 	@TestTemplate
 	void bootBuildImageWithBuildpacks() {
-		BuildResult result = this.gradleBuild.script("src/docs/gradle/packaging/boot-build-image-buildpacks")
-				.build("bootBuildImageBuildpacks");
+		BuildResult result = this.gradleBuild.script(Examples.DIR + "packaging/boot-build-image-buildpacks")
+			.build("bootBuildImageBuildpacks");
 		assertThat(result.getOutput()).contains("file:///path/to/example-buildpack.tgz")
-				.contains("urn:cnb:builder:paketo-buildpacks/java");
+			.contains("urn:cnb:builder:paketo-buildpacks/java");
 	}
 
 	@TestTemplate
 	void bootBuildImageWithCaches() {
-		BuildResult result = this.gradleBuild.script("src/docs/gradle/packaging/boot-build-image-caches")
-				.build("bootBuildImageCaches");
+		BuildResult result = this.gradleBuild.script(Examples.DIR + "packaging/boot-build-image-caches")
+			.build("bootBuildImageCaches");
 		assertThat(result.getOutput()).containsPattern("buildCache=cache-gradle-[\\d]+.build")
-				.containsPattern("launchCache=cache-gradle-[\\d]+.launch");
+			.containsPattern("launchCache=cache-gradle-[\\d]+.launch");
+	}
+
+	@TestTemplate
+	void bootBuildImageWithBindCaches() {
+		BuildResult result = this.gradleBuild.script(Examples.DIR + "packaging/boot-build-image-bind-caches")
+			.build("bootBuildImageCaches");
+		assertThat(result.getOutput()).containsPattern("buildWorkspace=/tmp/cache-gradle-[\\d]+.work")
+			.containsPattern("buildCache=/tmp/cache-gradle-[\\d]+.build")
+			.containsPattern("launchCache=/tmp/cache-gradle-[\\d]+.launch");
 	}
 
 	protected void jarFile(File file) throws IOException {

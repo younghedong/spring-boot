@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2021 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,12 +17,23 @@
 package org.springframework.boot.autoconfigure.integration;
 
 import java.io.FileNotFoundException;
+import java.lang.reflect.Modifier;
+import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
+import java.util.List;
+import java.util.Map;
 import java.util.function.Consumer;
 
+import io.lettuce.core.dynamic.support.ReflectionUtils;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
 
 import org.springframework.boot.SpringApplication;
+import org.springframework.boot.context.properties.bind.BindResult;
+import org.springframework.boot.context.properties.bind.Bindable;
+import org.springframework.boot.context.properties.bind.Binder;
 import org.springframework.boot.origin.Origin;
 import org.springframework.boot.origin.OriginLookup;
 import org.springframework.boot.origin.TextResourceOrigin;
@@ -32,9 +43,13 @@ import org.springframework.core.env.PropertySource;
 import org.springframework.core.env.StandardEnvironment;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.core.io.Resource;
+import org.springframework.integration.context.IntegrationProperties;
+import org.springframework.mock.env.MockEnvironment;
+import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.util.ClassUtils;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.assertThatIllegalStateException;
 import static org.mockito.Mockito.mock;
 
 /**
@@ -56,8 +71,9 @@ class IntegrationPropertiesEnvironmentPostProcessorTests {
 	@Test
 	void postProcessEnvironmentAddPropertySourceLast() {
 		ConfigurableEnvironment environment = new StandardEnvironment();
-		environment.getPropertySources().addLast(new MapPropertySource("test",
-				Collections.singletonMap("spring.integration.endpoint.no-auto-startup", "another*")));
+		environment.getPropertySources()
+			.addLast(new MapPropertySource("test",
+					Collections.singletonMap("spring.integration.endpoint.no-auto-startup", "another*")));
 		new IntegrationPropertiesEnvironmentPostProcessor().postProcessEnvironment(environment,
 				mock(SpringApplication.class));
 		assertThat(environment.getPropertySources().contains("META-INF/spring.integration.properties")).isTrue();
@@ -68,10 +84,11 @@ class IntegrationPropertiesEnvironmentPostProcessorTests {
 	void registerIntegrationPropertiesPropertySourceWithUnknownResourceThrowsException() {
 		ConfigurableEnvironment environment = new StandardEnvironment();
 		ClassPathResource unknown = new ClassPathResource("does-not-exist.properties", getClass());
-		assertThatThrownBy(() -> new IntegrationPropertiesEnvironmentPostProcessor()
+		assertThatIllegalStateException()
+			.isThrownBy(() -> new IntegrationPropertiesEnvironmentPostProcessor()
 				.registerIntegrationPropertiesPropertySource(environment, unknown))
-						.isInstanceOf(IllegalStateException.class).hasCauseInstanceOf(FileNotFoundException.class)
-						.hasMessageContaining(unknown.toString());
+			.withCauseInstanceOf(FileNotFoundException.class)
+			.withMessageContaining(unknown.toString());
 	}
 
 	@Test
@@ -81,17 +98,17 @@ class IntegrationPropertiesEnvironmentPostProcessorTests {
 				new ClassPathResource("spring.integration.properties", getClass()));
 		assertThat(environment.getProperty("spring.integration.channel.auto-create", Boolean.class)).isFalse();
 		assertThat(environment.getProperty("spring.integration.channel.max-unicast-subscribers", Integer.class))
-				.isEqualTo(4);
+			.isEqualTo(4);
 		assertThat(environment.getProperty("spring.integration.channel.max-broadcast-subscribers", Integer.class))
-				.isEqualTo(6);
+			.isEqualTo(6);
 		assertThat(environment.getProperty("spring.integration.error.require-subscribers", Boolean.class)).isFalse();
 		assertThat(environment.getProperty("spring.integration.error.ignore-failures", Boolean.class)).isFalse();
 		assertThat(environment.getProperty("spring.integration.endpoint.throw-exception-on-late-reply", Boolean.class))
-				.isTrue();
+			.isTrue();
 		assertThat(environment.getProperty("spring.integration.endpoint.read-only-headers", String.class))
-				.isEqualTo("header1,header2");
+			.isEqualTo("header1,header2");
 		assertThat(environment.getProperty("spring.integration.endpoint.no-auto-startup", String.class))
-				.isEqualTo("testService,anotherService");
+			.isEqualTo("testService,anotherService");
 	}
 
 	@Test
@@ -102,14 +119,64 @@ class IntegrationPropertiesEnvironmentPostProcessorTests {
 		new IntegrationPropertiesEnvironmentPostProcessor().registerIntegrationPropertiesPropertySource(environment,
 				resource);
 		PropertySource<?> ps = environment.getPropertySources().get("META-INF/spring.integration.properties");
-		assertThat(ps).isNotNull().isInstanceOf(OriginLookup.class);
+		assertThat(ps).isInstanceOf(OriginLookup.class);
 		OriginLookup<String> originLookup = (OriginLookup<String>) ps;
 		assertThat(originLookup.getOrigin("spring.integration.channel.auto-create"))
-				.satisfies(textOrigin(resource, 0, 39));
+			.satisfies(textOrigin(resource, 0, 39));
 		assertThat(originLookup.getOrigin("spring.integration.channel.max-unicast-subscribers"))
-				.satisfies(textOrigin(resource, 1, 50));
+			.satisfies(textOrigin(resource, 1, 50));
 		assertThat(originLookup.getOrigin("spring.integration.channel.max-broadcast-subscribers"))
-				.satisfies(textOrigin(resource, 2, 52));
+			.satisfies(textOrigin(resource, 2, 52));
+	}
+
+	@Test
+	@SuppressWarnings("unchecked")
+	void hasMappingsForAllMappableProperties() throws Exception {
+		Class<?> propertySource = ClassUtils.forName("%s.IntegrationPropertiesPropertySource"
+			.formatted(IntegrationPropertiesEnvironmentPostProcessor.class.getName()), getClass().getClassLoader());
+		Map<String, String> mappings = (Map<String, String>) ReflectionTestUtils.getField(propertySource,
+				"KEYS_MAPPING");
+		assertThat(mappings.values()).containsExactlyInAnyOrderElementsOf(integrationPropertyNames());
+	}
+
+	private static List<String> integrationPropertyNames() {
+		List<String> propertiesToMap = new ArrayList<>();
+		ReflectionUtils.doWithFields(IntegrationProperties.class, (field) -> {
+			String value = (String) ReflectionUtils.getField(field, null);
+			if (value.startsWith(IntegrationProperties.INTEGRATION_PROPERTIES_PREFIX)
+					&& value.length() > IntegrationProperties.INTEGRATION_PROPERTIES_PREFIX.length()) {
+				propertiesToMap.add(value);
+			}
+		}, (field) -> Modifier.isStatic(field.getModifiers()) && field.getType().equals(String.class));
+		propertiesToMap.remove(IntegrationProperties.TASK_SCHEDULER_POOL_SIZE);
+		return propertiesToMap;
+	}
+
+	@MethodSource("mappedConfigurationProperties")
+	@ParameterizedTest
+	void mappedPropertiesExistOnBootsIntegrationProperties(String mapping) {
+		Bindable<org.springframework.boot.autoconfigure.integration.IntegrationProperties> bindable = Bindable
+			.of(org.springframework.boot.autoconfigure.integration.IntegrationProperties.class);
+		MockEnvironment environment = new MockEnvironment().withProperty(mapping,
+				(mapping.contains("max") || mapping.contains("timeout")) ? "1" : "true");
+		BindResult<org.springframework.boot.autoconfigure.integration.IntegrationProperties> result = Binder
+			.get(environment)
+			.bind("spring.integration", bindable);
+		assertThat(result.isBound()).isTrue();
+	}
+
+	@SuppressWarnings("unchecked")
+	private static Collection<String> mappedConfigurationProperties() {
+		try {
+			Class<?> propertySource = ClassUtils.forName("%s.IntegrationPropertiesPropertySource"
+				.formatted(IntegrationPropertiesEnvironmentPostProcessor.class.getName()), null);
+			Map<String, String> mappings = (Map<String, String>) ReflectionTestUtils.getField(propertySource,
+					"KEYS_MAPPING");
+			return mappings.keySet();
+		}
+		catch (Exception ex) {
+			throw new RuntimeException(ex);
+		}
 	}
 
 	private Consumer<Origin> textOrigin(Resource resource, int line, int column) {

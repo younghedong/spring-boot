@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2020 the original author or authors.
+ * Copyright 2012-2023 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -35,7 +35,7 @@ import org.springframework.core.env.PropertySource;
  * {@link ApplicationContextInitializer} that sets {@link Environment} properties for the
  * ports that {@link RSocketServer} servers are actually listening on. The property
  * {@literal "local.rsocket.server.port"} can be injected directly into tests using
- * {@link Value @Value} or obtained via the {@link Environment}.
+ * {@link Value @Value} or obtained through the {@link Environment}.
  * <p>
  * Properties are automatically propagated up to any parent context.
  *
@@ -55,6 +55,8 @@ public class RSocketPortInfoApplicationContextInitializer
 
 		private static final String PROPERTY_NAME = "local.rsocket.server.port";
 
+		private static final String PROPERTY_SOURCE_NAME = "server.ports";
+
 		private final ConfigurableApplicationContext applicationContext;
 
 		Listener(ConfigurableApplicationContext applicationContext) {
@@ -69,8 +71,8 @@ public class RSocketPortInfoApplicationContextInitializer
 		}
 
 		private void setPortProperty(ApplicationContext context, int port) {
-			if (context instanceof ConfigurableApplicationContext) {
-				setPortProperty(((ConfigurableApplicationContext) context).getEnvironment(), port);
+			if (context instanceof ConfigurableApplicationContext configurableContext) {
+				setPortProperty(configurableContext.getEnvironment(), port);
 			}
 			if (context.getParent() != null) {
 				setPortProperty(context.getParent(), port);
@@ -79,9 +81,9 @@ public class RSocketPortInfoApplicationContextInitializer
 
 		private void setPortProperty(ConfigurableEnvironment environment, int port) {
 			MutablePropertySources sources = environment.getPropertySources();
-			PropertySource<?> source = sources.get("server.ports");
+			PropertySource<?> source = sources.get(PROPERTY_SOURCE_NAME);
 			if (source == null) {
-				source = new MapPropertySource("server.ports", new HashMap<>());
+				source = new MapPropertySource(PROPERTY_SOURCE_NAME, new HashMap<>());
 				sources.addFirst(source);
 			}
 			setPortProperty(port, source);

@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2020 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,8 +23,13 @@ import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.test.context.runner.ReactiveWebApplicationContextRunner;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.server.reactive.ContextPathCompositeHandler;
 import org.springframework.http.server.reactive.HttpHandler;
+import org.springframework.http.server.reactive.ServerHttpRequest;
+import org.springframework.http.server.reactive.ServerHttpResponse;
+import org.springframework.mock.http.server.reactive.MockServerHttpRequest;
+import org.springframework.mock.http.server.reactive.MockServerHttpResponse;
 import org.springframework.web.reactive.DispatcherHandler;
 import org.springframework.web.reactive.function.server.RouterFunction;
 import org.springframework.web.reactive.function.server.ServerResponse;
@@ -40,11 +45,12 @@ import static org.springframework.web.reactive.function.server.RouterFunctions.r
  * @author Brian Clozel
  * @author Stephane Nicoll
  * @author Andy Wilkinson
+ * @author Lasse Wulff
  */
 class HttpHandlerAutoConfigurationTests {
 
 	private final ReactiveWebApplicationContextRunner contextRunner = new ReactiveWebApplicationContextRunner()
-			.withConfiguration(AutoConfigurations.of(HttpHandlerAutoConfiguration.class));
+		.withConfiguration(AutoConfigurations.of(HttpHandlerAutoConfiguration.class));
 
 	@Test
 	void shouldNotProcessIfExistingHttpHandler() {
@@ -57,25 +63,40 @@ class HttpHandlerAutoConfigurationTests {
 	@Test
 	void shouldConfigureHttpHandlerAnnotation() {
 		this.contextRunner.withConfiguration(AutoConfigurations.of(WebFluxAutoConfiguration.class))
-				.run((context) -> assertThat(context).hasSingleBean(HttpHandler.class));
+			.run((context) -> assertThat(context).hasSingleBean(HttpHandler.class));
 	}
 
 	@Test
 	void shouldConfigureHttpHandlerWithoutWebFluxAutoConfiguration() {
 		this.contextRunner.withUserConfiguration(CustomWebHandler.class)
-				.run((context) -> assertThat(context).hasSingleBean(HttpHandler.class));
+			.run((context) -> assertThat(context).hasSingleBean(HttpHandler.class));
+	}
+
+	@Test
+	void customizersAreCalled() {
+		this.contextRunner.withConfiguration(AutoConfigurations.of(WebFluxAutoConfiguration.class))
+			.withUserConfiguration(WebHttpHandlerBuilderCustomizers.class)
+			.run((context) -> {
+				assertThat(context).hasSingleBean(HttpHandler.class);
+				HttpHandler httpHandler = context.getBean(HttpHandler.class);
+				ServerHttpRequest request = MockServerHttpRequest.get("").build();
+				ServerHttpResponse response = new MockServerHttpResponse();
+				httpHandler.handle(request, response).block();
+				assertThat(response.getStatusCode()).isEqualTo(HttpStatus.I_AM_A_TEAPOT);
+			});
 	}
 
 	@Test
 	void shouldConfigureBasePathCompositeHandler() {
 		this.contextRunner.withConfiguration(AutoConfigurations.of(WebFluxAutoConfiguration.class))
-				.withPropertyValues("spring.webflux.base-path=/something").run((context) -> {
-					assertThat(context).hasSingleBean(HttpHandler.class);
-					HttpHandler httpHandler = context.getBean(HttpHandler.class);
-					assertThat(httpHandler).isInstanceOf(ContextPathCompositeHandler.class)
-							.extracting("handlerMap", InstanceOfAssertFactories.map(String.class, HttpHandler.class))
-							.containsKey("/something");
-				});
+			.withPropertyValues("spring.webflux.base-path=/something")
+			.run((context) -> {
+				assertThat(context).hasSingleBean(HttpHandler.class);
+				HttpHandler httpHandler = context.getBean(HttpHandler.class);
+				assertThat(httpHandler).isInstanceOf(ContextPathCompositeHandler.class)
+					.extracting("handlerMap", InstanceOfAssertFactories.map(String.class, HttpHandler.class))
+					.containsKey("/something");
+			});
 	}
 
 	@Configuration(proxyBeanMethods = false)
@@ -99,6 +120,20 @@ class HttpHandlerAutoConfigurationTests {
 		@Bean
 		WebHandler webHandler() {
 			return new DispatcherHandler();
+		}
+
+	}
+
+	@Configuration(proxyBeanMethods = false)
+	static class WebHttpHandlerBuilderCustomizers {
+
+		@Bean
+		WebHttpHandlerBuilderCustomizer customizerDecorator() {
+			return (webHttpHandlerBuilder) -> webHttpHandlerBuilder
+				.httpHandlerDecorator(((httpHandler) -> (request, response) -> {
+					response.setStatusCode(HttpStatus.I_AM_A_TEAPOT);
+					return response.setComplete();
+				}));
 		}
 
 	}

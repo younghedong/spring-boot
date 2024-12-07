@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2022 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -36,6 +36,7 @@ import javax.lang.model.element.Element;
 import javax.lang.model.element.ExecutableElement;
 import javax.lang.model.element.TypeElement;
 import javax.lang.model.element.VariableElement;
+import javax.lang.model.type.DeclaredType;
 import javax.lang.model.type.TypeKind;
 import javax.lang.model.type.TypeMirror;
 import javax.lang.model.util.Elements;
@@ -48,30 +49,23 @@ import org.springframework.boot.configurationprocessor.metadata.ItemDeprecation;
  * Provide utilities to detect and validate configuration properties.
  *
  * @author Stephane Nicoll
+ * @author Scott Frederick
+ * @author Moritz Halbritter
  */
 class MetadataGenerationEnvironment {
 
 	private static final String NULLABLE_ANNOTATION = "org.springframework.lang.Nullable";
 
-	private static final Set<String> TYPE_EXCLUDES;
-	static {
-		Set<String> excludes = new HashSet<>();
-		excludes.add("com.zaxxer.hikari.IConnectionCustomizer");
-		excludes.add("groovy.lang.MetaClass");
-		excludes.add("groovy.text.markup.MarkupTemplateEngine");
-		excludes.add("java.io.Writer");
-		excludes.add("java.io.PrintWriter");
-		excludes.add("java.lang.ClassLoader");
-		excludes.add("java.util.concurrent.ThreadFactory");
-		excludes.add("jakarta.jms.XAConnectionFactory");
-		excludes.add("javax.sql.DataSource");
-		excludes.add("javax.sql.XADataSource");
-		excludes.add("org.apache.tomcat.jdbc.pool.PoolConfiguration");
-		excludes.add("org.apache.tomcat.jdbc.pool.Validator");
-		excludes.add("org.flywaydb.core.api.callback.FlywayCallback");
-		excludes.add("org.flywaydb.core.api.resolver.MigrationResolver");
-		TYPE_EXCLUDES = Collections.unmodifiableSet(excludes);
-	}
+	private static final Set<String> TYPE_EXCLUDES = Set.of("com.zaxxer.hikari.IConnectionCustomizer",
+			"groovy.lang.MetaClass", "groovy.text.markup.MarkupTemplateEngine", "java.io.Writer", "java.io.PrintWriter",
+			"java.lang.ClassLoader", "java.util.concurrent.ThreadFactory", "jakarta.jms.XAConnectionFactory",
+			"javax.sql.DataSource", "javax.sql.XADataSource", "org.apache.tomcat.jdbc.pool.PoolConfiguration",
+			"org.apache.tomcat.jdbc.pool.Validator", "org.flywaydb.core.api.callback.FlywayCallback",
+			"org.flywaydb.core.api.resolver.MigrationResolver");
+
+	private static final Set<String> DEPRECATION_EXCLUDES = Set.of(
+			"org.apache.commons.dbcp2.BasicDataSource#getPassword",
+			"org.apache.commons.dbcp2.BasicDataSource#getUsername");
 
 	private final TypeUtils typeUtils;
 
@@ -160,6 +154,13 @@ class MetadataGenerationEnvironment {
 	}
 
 	boolean isDeprecated(Element element) {
+		if (element == null) {
+			return false;
+		}
+		String elementName = element.getEnclosingElement() + "#" + element.getSimpleName();
+		if (DEPRECATION_EXCLUDES.contains(elementName)) {
+			return false;
+		}
 		if (isElementDeprecated(element)) {
 			return true;
 		}
@@ -173,18 +174,17 @@ class MetadataGenerationEnvironment {
 		AnnotationMirror annotation = getAnnotation(element, this.deprecatedConfigurationPropertyAnnotation);
 		String reason = null;
 		String replacement = null;
+		String since = null;
 		if (annotation != null) {
-			Map<String, Object> elementValues = getAnnotationElementValues(annotation);
-			reason = (String) elementValues.get("reason");
-			replacement = (String) elementValues.get("replacement");
+			reason = getAnnotationElementStringValue(annotation, "reason");
+			replacement = getAnnotationElementStringValue(annotation, "replacement");
+			since = getAnnotationElementStringValue(annotation, "since");
 		}
-		reason = (reason == null || reason.isEmpty()) ? null : reason;
-		replacement = (replacement == null || replacement.isEmpty()) ? null : replacement;
-		return new ItemDeprecation(reason, replacement);
+		return new ItemDeprecation(reason, replacement, since);
 	}
 
 	boolean hasConstructorBindingAnnotation(ExecutableElement element) {
-		return hasAnnotation(element, this.constructorBindingAnnotation);
+		return hasAnnotation(element, this.constructorBindingAnnotation, true);
 	}
 
 	boolean hasAutowiredAnnotation(ExecutableElement element) {
@@ -192,7 +192,40 @@ class MetadataGenerationEnvironment {
 	}
 
 	boolean hasAnnotation(Element element, String type) {
-		return getAnnotation(element, type) != null;
+		return hasAnnotation(element, type, false);
+	}
+
+	boolean hasAnnotation(Element element, String type, boolean considerMetaAnnotations) {
+		if (element != null) {
+			for (AnnotationMirror annotation : element.getAnnotationMirrors()) {
+				if (type.equals(annotation.getAnnotationType().toString())) {
+					return true;
+				}
+			}
+			if (considerMetaAnnotations) {
+				Set<Element> seen = new HashSet<>();
+				for (AnnotationMirror annotation : element.getAnnotationMirrors()) {
+					if (hasMetaAnnotation(annotation.getAnnotationType().asElement(), type, seen)) {
+						return true;
+					}
+				}
+
+			}
+		}
+		return false;
+	}
+
+	private boolean hasMetaAnnotation(Element annotationElement, String type, Set<Element> seen) {
+		if (seen.add(annotationElement)) {
+			for (AnnotationMirror annotation : annotationElement.getAnnotationMirrors()) {
+				DeclaredType annotationType = annotation.getAnnotationType();
+				if (type.equals(annotationType.toString())
+						|| hasMetaAnnotation(annotationType.asElement(), type, seen)) {
+					return true;
+				}
+			}
+		}
+		return false;
 	}
 
 	AnnotationMirror getAnnotation(Element element, String type) {
@@ -221,10 +254,6 @@ class MetadataGenerationEnvironment {
 		return Collections.unmodifiableList(stack);
 	}
 
-	private boolean hasAnnotationRecursive(Element element, String type) {
-		return !getElementsAnnotatedOrMetaAnnotatedWith(element, this.elements.getTypeElement(type)).isEmpty();
-	}
-
 	private boolean collectElementsAnnotatedOrMetaAnnotatedWith(TypeElement annotationType, LinkedList<Element> stack) {
 		Element element = stack.peekLast();
 		for (AnnotationMirror annotation : this.elements.getAllAnnotationMirrors(element)) {
@@ -245,8 +274,18 @@ class MetadataGenerationEnvironment {
 	Map<String, Object> getAnnotationElementValues(AnnotationMirror annotation) {
 		Map<String, Object> values = new LinkedHashMap<>();
 		annotation.getElementValues()
-				.forEach((name, value) -> values.put(name.getSimpleName().toString(), getAnnotationValue(value)));
+			.forEach((name, value) -> values.put(name.getSimpleName().toString(), getAnnotationValue(value)));
 		return values;
+	}
+
+	String getAnnotationElementStringValue(AnnotationMirror annotation, String name) {
+		return annotation.getElementValues()
+			.entrySet()
+			.stream()
+			.filter((element) -> element.getKey().getSimpleName().toString().equals(name))
+			.map((element) -> asString(getAnnotationValue(element.getValue())))
+			.findFirst()
+			.orElse(null);
 	}
 
 	private Object getAnnotationValue(AnnotationValue annotationValue) {
@@ -257,6 +296,10 @@ class MetadataGenerationEnvironment {
 			return values;
 		}
 		return value;
+	}
+
+	private String asString(Object value) {
+		return (value == null || value.toString().isEmpty()) ? null : (String) value;
 	}
 
 	TypeElement getConfigurationPropertiesAnnotationElement() {
@@ -276,8 +319,10 @@ class MetadataGenerationEnvironment {
 	}
 
 	Set<TypeElement> getEndpointAnnotationElements() {
-		return this.endpointAnnotations.stream().map(this.elements::getTypeElement).filter(Objects::nonNull)
-				.collect(Collectors.toSet());
+		return this.endpointAnnotations.stream()
+			.map(this.elements::getTypeElement)
+			.filter(Objects::nonNull)
+			.collect(Collectors.toSet());
 	}
 
 	AnnotationMirror getReadOperationAnnotation(Element element) {

@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2022 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -32,13 +32,16 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
 import org.springframework.boot.autoconfigure.http.codec.CodecsAutoConfiguration;
+import org.springframework.boot.autoconfigure.task.TaskExecutionAutoConfiguration;
 import org.springframework.boot.autoconfigure.template.TemplateAvailabilityProviders;
+import org.springframework.boot.autoconfigure.thread.Threading;
 import org.springframework.boot.autoconfigure.validation.ValidationAutoConfiguration;
 import org.springframework.boot.autoconfigure.validation.ValidatorAdapter;
 import org.springframework.boot.autoconfigure.web.ConditionalOnEnabledResourceChain;
 import org.springframework.boot.autoconfigure.web.ServerProperties;
 import org.springframework.boot.autoconfigure.web.WebProperties;
 import org.springframework.boot.autoconfigure.web.WebProperties.Resources;
+import org.springframework.boot.autoconfigure.web.WebResourcesRuntimeHints;
 import org.springframework.boot.autoconfigure.web.format.DateTimeFormatters;
 import org.springframework.boot.autoconfigure.web.format.WebConversionService;
 import org.springframework.boot.autoconfigure.web.reactive.WebFluxProperties.Format;
@@ -50,14 +53,18 @@ import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
+import org.springframework.context.annotation.ImportRuntimeHints;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
+import org.springframework.core.env.Environment;
+import org.springframework.core.task.AsyncTaskExecutor;
 import org.springframework.format.FormatterRegistry;
 import org.springframework.format.support.FormattingConversionService;
 import org.springframework.http.codec.ServerCodecConfigurer;
 import org.springframework.util.ClassUtils;
 import org.springframework.validation.Validator;
 import org.springframework.web.filter.reactive.HiddenHttpMethodFilter;
+import org.springframework.web.reactive.config.BlockingExecutionConfigurer;
 import org.springframework.web.reactive.config.DelegatingWebFluxConfiguration;
 import org.springframework.web.reactive.config.EnableWebFlux;
 import org.springframework.web.reactive.config.ResourceHandlerRegistration;
@@ -72,6 +79,7 @@ import org.springframework.web.reactive.result.method.HandlerMethodArgumentResol
 import org.springframework.web.reactive.result.method.annotation.ArgumentResolverConfigurer;
 import org.springframework.web.reactive.result.method.annotation.RequestMappingHandlerAdapter;
 import org.springframework.web.reactive.result.method.annotation.RequestMappingHandlerMapping;
+import org.springframework.web.reactive.result.method.annotation.ResponseEntityExceptionHandler;
 import org.springframework.web.reactive.result.view.ViewResolver;
 import org.springframework.web.server.WebSession;
 import org.springframework.web.server.adapter.WebHttpHandlerBuilder;
@@ -104,6 +112,7 @@ import org.springframework.web.server.session.WebSessionManager;
 @ConditionalOnClass(WebFluxConfigurer.class)
 @ConditionalOnMissingBean({ WebFluxConfigurationSupport.class })
 @AutoConfigureOrder(Ordered.HIGHEST_PRECEDENCE + 10)
+@ImportRuntimeHints(WebResourcesRuntimeHints.class)
 public class WebFluxAutoConfiguration {
 
 	@Bean
@@ -142,6 +151,8 @@ public class WebFluxAutoConfiguration {
 
 		private static final Log logger = LogFactory.getLog(WebFluxConfig.class);
 
+		private final Environment environment;
+
 		private final Resources resourceProperties;
 
 		private final WebFluxProperties webFluxProperties;
@@ -156,11 +167,12 @@ public class WebFluxAutoConfiguration {
 
 		private final ObjectProvider<ViewResolver> viewResolvers;
 
-		public WebFluxConfig(WebProperties webProperties, WebFluxProperties webFluxProperties,
+		public WebFluxConfig(Environment environment, WebProperties webProperties, WebFluxProperties webFluxProperties,
 				ListableBeanFactory beanFactory, ObjectProvider<HandlerMethodArgumentResolver> resolvers,
 				ObjectProvider<CodecCustomizer> codecCustomizers,
 				ObjectProvider<ResourceHandlerRegistrationCustomizer> resourceHandlerRegistrationCustomizer,
 				ObjectProvider<ViewResolver> viewResolvers) {
+			this.environment = environment;
 			this.resourceProperties = webProperties.getResources();
 			this.webFluxProperties = webFluxProperties;
 			this.beanFactory = beanFactory;
@@ -181,21 +193,34 @@ public class WebFluxAutoConfiguration {
 		}
 
 		@Override
+		public void configureBlockingExecution(BlockingExecutionConfigurer configurer) {
+			if (Threading.VIRTUAL.isActive(this.environment) && this.beanFactory
+				.containsBean(TaskExecutionAutoConfiguration.APPLICATION_TASK_EXECUTOR_BEAN_NAME)) {
+				Object taskExecutor = this.beanFactory
+					.getBean(TaskExecutionAutoConfiguration.APPLICATION_TASK_EXECUTOR_BEAN_NAME);
+				if (taskExecutor instanceof AsyncTaskExecutor asyncTaskExecutor) {
+					configurer.setExecutor(asyncTaskExecutor);
+				}
+			}
+		}
+
+		@Override
 		public void addResourceHandlers(ResourceHandlerRegistry registry) {
 			if (!this.resourceProperties.isAddMappings()) {
 				logger.debug("Default resource handling disabled");
 				return;
 			}
-			if (!registry.hasMappingForPattern("/webjars/**")) {
-				ResourceHandlerRegistration registration = registry.addResourceHandler("/webjars/**")
-						.addResourceLocations("classpath:/META-INF/resources/webjars/");
+			String webjarsPathPattern = this.webFluxProperties.getWebjarsPathPattern();
+			if (!registry.hasMappingForPattern(webjarsPathPattern)) {
+				ResourceHandlerRegistration registration = registry.addResourceHandler(webjarsPathPattern)
+					.addResourceLocations("classpath:/META-INF/resources/webjars/");
 				configureResourceCaching(registration);
 				customizeResourceHandlerRegistration(registration);
 			}
 			String staticPathPattern = this.webFluxProperties.getStaticPathPattern();
 			if (!registry.hasMappingForPattern(staticPathPattern)) {
 				ResourceHandlerRegistration registration = registry.addResourceHandler(staticPathPattern)
-						.addResourceLocations(this.resourceProperties.getStaticLocations());
+					.addResourceLocations(this.resourceProperties.getStaticLocations());
 				configureResourceCaching(registration);
 				customizeResourceHandlerRegistration(registration);
 			}
@@ -204,7 +229,7 @@ public class WebFluxAutoConfiguration {
 		private void configureResourceCaching(ResourceHandlerRegistration registration) {
 			Duration cachePeriod = this.resourceProperties.getCache().getPeriod();
 			WebProperties.Resources.Cache.Cachecontrol cacheControl = this.resourceProperties.getCache()
-					.getCachecontrol();
+				.getCachecontrol();
 			if (cachePeriod != null && cacheControl.getMaxAge() == null) {
 				cacheControl.setMaxAge(cachePeriod);
 			}
@@ -257,8 +282,10 @@ public class WebFluxAutoConfiguration {
 		@Override
 		public FormattingConversionService webFluxConversionService() {
 			Format format = this.webFluxProperties.getFormat();
-			WebConversionService conversionService = new WebConversionService(new DateTimeFormatters()
-					.dateFormat(format.getDate()).timeFormat(format.getTime()).dateTimeFormat(format.getDateTime()));
+			WebConversionService conversionService = new WebConversionService(
+					new DateTimeFormatters().dateFormat(format.getDate())
+						.timeFormat(format.getTime())
+						.dateTimeFormat(format.getDateTime()));
 			addFormatters(conversionService);
 			return conversionService;
 		}
@@ -311,7 +338,10 @@ public class WebFluxAutoConfiguration {
 		public WebSessionManager webSessionManager(ObjectProvider<WebSessionIdResolver> webSessionIdResolver) {
 			DefaultWebSessionManager webSessionManager = new DefaultWebSessionManager();
 			Duration timeout = this.serverProperties.getReactive().getSession().getTimeout();
-			webSessionManager.setSessionStore(new MaxIdleTimeInMemoryWebSessionStore(timeout));
+			int maxSessions = this.serverProperties.getReactive().getSession().getMaxSessions();
+			MaxIdleTimeInMemoryWebSessionStore sessionStore = new MaxIdleTimeInMemoryWebSessionStore(timeout);
+			sessionStore.setMaxSessions(maxSessions);
+			webSessionManager.setSessionStore(sessionStore);
 			webSessionIdResolver.ifAvailable(webSessionManager::setSessionIdResolver);
 			return webSessionManager;
 		}
@@ -326,6 +356,19 @@ public class WebFluxAutoConfiguration {
 		ResourceChainResourceHandlerRegistrationCustomizer resourceHandlerRegistrationCustomizer(
 				WebProperties webProperties) {
 			return new ResourceChainResourceHandlerRegistrationCustomizer(webProperties.getResources());
+		}
+
+	}
+
+	@Configuration(proxyBeanMethods = false)
+	@ConditionalOnProperty(prefix = "spring.webflux.problemdetails", name = "enabled", havingValue = "true")
+	static class ProblemDetailsErrorHandlingConfiguration {
+
+		@Bean
+		@ConditionalOnMissingBean(ResponseEntityExceptionHandler.class)
+		@Order(0)
+		ProblemDetailsExceptionHandler problemDetailsExceptionHandler() {
+			return new ProblemDetailsExceptionHandler();
 		}
 
 	}

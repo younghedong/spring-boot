@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2022 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -38,7 +38,7 @@ import org.springframework.core.type.AnnotatedTypeMetadata;
  * @since 2.4.0
  */
 @AutoConfiguration
-@ConditionalOnAvailableEndpoint(endpoint = StartupEndpoint.class)
+@ConditionalOnAvailableEndpoint(StartupEndpoint.class)
 @Conditional(StartupEndpointAutoConfiguration.ApplicationStartupCondition.class)
 public class StartupEndpointAutoConfiguration {
 
@@ -62,8 +62,8 @@ public class StartupEndpointAutoConfiguration {
 			ConditionMessage.Builder message = ConditionMessage.forCondition("ApplicationStartup");
 			ApplicationStartup applicationStartup = context.getBeanFactory().getApplicationStartup();
 			if (applicationStartup instanceof BufferingApplicationStartup) {
-				return ConditionOutcome.match(
-						message.because("configured applicationStartup is of type BufferingApplicationStartup."));
+				return ConditionOutcome
+					.match(message.because("configured applicationStartup is of type BufferingApplicationStartup."));
 			}
 			return ConditionOutcome.noMatch(message.because("configured applicationStartup is of type "
 					+ applicationStartup.getClass() + ", expected BufferingApplicationStartup."));

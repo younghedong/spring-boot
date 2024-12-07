@@ -1,15 +1,18 @@
 plugins {
 	id "java-library"
-	id "org.springframework.boot.conventions"
 	id "org.springframework.boot.deployed"
 }
 
 description = "Spring Boot Loader Tools"
 
-def generatedResources = "${buildDir}/generated-resources/main"
+Provider<Directory> generatedResources = layout.buildDirectory.dir("generated-resources/main")
 
 configurations {
 	loader {
+		extendsFrom dependencyManagement
+		transitive = false
+	}
+	loaderClassic {
 		extendsFrom dependencyManagement
 		transitive = false
 	}
@@ -26,8 +29,9 @@ dependencies {
 	compileOnly("ch.qos.logback:logback-classic")
 
 	loader(project(":spring-boot-project:spring-boot-tools:spring-boot-loader"))
+	loaderClassic(project(":spring-boot-project:spring-boot-tools:spring-boot-loader-classic"))
 
-	jarmode(project(":spring-boot-project:spring-boot-tools:spring-boot-jarmode-layertools"))
+	jarmode(project(":spring-boot-project:spring-boot-tools:spring-boot-jarmode-tools"))
 
 	testImplementation("org.assertj:assertj-core")
 	testImplementation("org.junit.jupiter:junit-jupiter")
@@ -47,13 +51,13 @@ task reproducibleLoaderJar(type: Jar) {
 	reproducibleFileOrder = true
 	preserveFileTimestamps = false
 	archiveFileName = "spring-boot-loader.jar"
-	destinationDirectory = file("${generatedResources}/META-INF/loader")
+	destinationDirectory = file(generatedResources.map {it.dir("META-INF/loader") })
 }
 
-task reproducibleJarModeLayerToolsJar(type: Jar) {
-	dependsOn configurations.jarmode
+task reproducibleLoaderClassicJar(type: Jar) {
+	dependsOn configurations.loaderClassic
 	from {
-		zipTree(configurations.jarmode.incoming.files.singleFile).matching {
+		zipTree(configurations.loaderClassic.incoming.files.singleFile).matching {
 			exclude "META-INF/LICENSE.txt"
 			exclude "META-INF/NOTICE.txt"
 			exclude "META-INF/spring-boot.properties"
@@ -61,18 +65,39 @@ task reproducibleJarModeLayerToolsJar(type: Jar) {
 	}
 	reproducibleFileOrder = true
 	preserveFileTimestamps = false
-	archiveFileName = "spring-boot-jarmode-layertools.jar"
-	destinationDirectory = file("${generatedResources}/META-INF/jarmode")
+	archiveFileName = "spring-boot-loader-classic.jar"
+	destinationDirectory = file(generatedResources.map { it.dir("META-INF/loader") })
+}
+
+task toolsJar(type: Sync) {
+	dependsOn configurations.jarmode
+	from {
+		file(configurations.jarmode.incoming.files.singleFile)
+	}
+	rename({ "spring-boot-jarmode-tools.jar" })
+	into(file(generatedResources.map { it.dir("META-INF/jarmode") }))
 }
 
 sourceSets {
 	main {
-		output.dir(generatedResources, builtBy: [reproducibleJarModeLayerToolsJar, reproducibleLoaderJar])
+		output.dir(generatedResources, builtBy: [toolsJar, reproducibleLoaderJar, reproducibleLoaderClassicJar])
 	}
 }
 
 compileJava {
 	if ((!project.hasProperty("toolchainVersion")) && JavaVersion.current() == JavaVersion.VERSION_1_8) {
-		options.compilerArgs += ['-Xlint:-sunapi', '-XDenableSunApiLintControl']	
-	}	
+		options.compilerArgs += ['-Xlint:-sunapi', '-XDenableSunApiLintControl']
+	}
+}
+
+plugins.withType(EclipsePlugin) {
+	eclipse {
+		classpath.file { merger ->
+			merger.beforeMerged { content ->
+				if (content instanceof org.gradle.plugins.ide.eclipse.model.Classpath) {
+					content.entries.add(new org.gradle.plugins.ide.eclipse.model.SourceFolder("build/generated-resources/main", "bin/main"))
+				}
+			}
+		}
+	}
 }

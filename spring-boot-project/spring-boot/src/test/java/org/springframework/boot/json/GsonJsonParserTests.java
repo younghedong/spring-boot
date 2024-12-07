@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2021 the original author or authors.
+ * Copyright 2012-2022 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,6 +16,8 @@
 
 package org.springframework.boot.json;
 
+import java.io.IOException;
+
 /**
  * Tests for {@link GsonJsonParser}.
  *
@@ -26,6 +28,11 @@ class GsonJsonParserTests extends AbstractJsonParserTests {
 	@Override
 	protected JsonParser getParser() {
 		return new GsonJsonParser();
+	}
+
+	@Override
+	void listWithRepeatedOpenArray() throws IOException {
+		// Gson does not protect against deeply nested JSON
 	}
 
 }

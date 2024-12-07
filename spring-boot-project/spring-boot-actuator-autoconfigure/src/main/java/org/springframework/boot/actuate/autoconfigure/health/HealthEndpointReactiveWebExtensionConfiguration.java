@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2022 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -45,20 +45,20 @@ import org.springframework.context.annotation.Configuration;
  */
 @Configuration(proxyBeanMethods = false)
 @ConditionalOnWebApplication(type = Type.REACTIVE)
-@ConditionalOnAvailableEndpoint(endpoint = HealthEndpoint.class,
-		exposure = { EndpointExposure.WEB, EndpointExposure.CLOUD_FOUNDRY })
+@ConditionalOnAvailableEndpoint(endpoint = HealthEndpoint.class, exposure = EndpointExposure.WEB)
 class HealthEndpointReactiveWebExtensionConfiguration {
 
 	@Bean
 	@ConditionalOnMissingBean
 	@ConditionalOnBean(HealthEndpoint.class)
 	ReactiveHealthEndpointWebExtension reactiveHealthEndpointWebExtension(
-			ReactiveHealthContributorRegistry reactiveHealthContributorRegistry, HealthEndpointGroups groups) {
-		return new ReactiveHealthEndpointWebExtension(reactiveHealthContributorRegistry, groups);
+			ReactiveHealthContributorRegistry reactiveHealthContributorRegistry, HealthEndpointGroups groups,
+			HealthEndpointProperties properties) {
+		return new ReactiveHealthEndpointWebExtension(reactiveHealthContributorRegistry, groups,
+				properties.getLogging().getSlowIndicatorThreshold());
 	}
 
 	@Configuration(proxyBeanMethods = false)
-	@ConditionalOnAvailableEndpoint(endpoint = HealthEndpoint.class, exposure = EndpointExposure.WEB)
 	static class WebFluxAdditionalHealthEndpointPathsConfiguration {
 
 		@Bean
@@ -66,7 +66,9 @@ class HealthEndpointReactiveWebExtensionConfiguration {
 				WebEndpointsSupplier webEndpointsSupplier, HealthEndpointGroups groups) {
 			Collection<ExposableWebEndpoint> webEndpoints = webEndpointsSupplier.getEndpoints();
 			ExposableWebEndpoint health = webEndpoints.stream()
-					.filter((endpoint) -> endpoint.getEndpointId().equals(HealthEndpoint.ID)).findFirst().get();
+				.filter((endpoint) -> endpoint.getEndpointId().equals(HealthEndpoint.ID))
+				.findFirst()
+				.orElse(null);
 			return new AdditionalHealthEndpointPathsWebFluxHandlerMapping(new EndpointMapping(""), health,
 					groups.getAllWithAdditionalPath(WebServerNamespace.SERVER));
 		}

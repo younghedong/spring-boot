@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2022 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,11 +16,13 @@
 
 package org.springframework.boot.actuate.autoconfigure.info;
 
+import java.time.Duration;
 import java.util.Map;
 import java.util.Properties;
 
 import org.junit.jupiter.api.Test;
 
+import org.springframework.boot.actuate.autoconfigure.ssl.SslHealthIndicatorProperties;
 import org.springframework.boot.actuate.info.BuildInfoContributor;
 import org.springframework.boot.actuate.info.EnvironmentInfoContributor;
 import org.springframework.boot.actuate.info.GitInfoContributor;
@@ -28,11 +30,17 @@ import org.springframework.boot.actuate.info.Info;
 import org.springframework.boot.actuate.info.InfoContributor;
 import org.springframework.boot.actuate.info.JavaInfoContributor;
 import org.springframework.boot.actuate.info.OsInfoContributor;
+import org.springframework.boot.actuate.info.ProcessInfoContributor;
+import org.springframework.boot.actuate.info.SslInfoContributor;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
+import org.springframework.boot.autoconfigure.ssl.SslAutoConfiguration;
 import org.springframework.boot.info.BuildProperties;
 import org.springframework.boot.info.GitProperties;
 import org.springframework.boot.info.JavaInfo;
 import org.springframework.boot.info.OsInfo;
+import org.springframework.boot.info.ProcessInfo;
+import org.springframework.boot.info.SslInfo;
+import org.springframework.boot.ssl.SslBundles;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -48,32 +56,33 @@ import static org.assertj.core.api.Assertions.assertThat;
 class InfoContributorAutoConfigurationTests {
 
 	private final ApplicationContextRunner contextRunner = new ApplicationContextRunner()
-			.withConfiguration(AutoConfigurations.of(InfoContributorAutoConfiguration.class));
+		.withConfiguration(AutoConfigurations.of(InfoContributorAutoConfiguration.class));
 
 	@Test
 	void envContributor() {
 		this.contextRunner.withPropertyValues("management.info.env.enabled=true")
-				.run((context) -> assertThat(context).hasSingleBean(EnvironmentInfoContributor.class));
+			.run((context) -> assertThat(context).hasSingleBean(EnvironmentInfoContributor.class));
 	}
 
 	@Test
 	void defaultInfoContributorsEnabled() {
-		this.contextRunner.run((context) -> assertThat(context).doesNotHaveBean(InfoContributor.class));
+		this.contextRunner.run(
+				(context) -> assertThat(context).doesNotHaveBean(InfoContributor.class).doesNotHaveBean(SslInfo.class));
 	}
 
 	@Test
 	void defaultInfoContributorsEnabledWithPrerequisitesInPlace() {
 		this.contextRunner.withUserConfiguration(GitPropertiesConfiguration.class, BuildPropertiesConfiguration.class)
-				.run((context) -> assertThat(context.getBeansOfType(InfoContributor.class)).hasSize(2)
-						.satisfies((contributors) -> assertThat(contributors.values())
-								.hasOnlyElementsOfTypes(BuildInfoContributor.class, GitInfoContributor.class)));
+			.run((context) -> assertThat(context.getBeansOfType(InfoContributor.class)).hasSize(2)
+				.satisfies((contributors) -> assertThat(contributors.values())
+					.hasOnlyElementsOfTypes(BuildInfoContributor.class, GitInfoContributor.class)));
 	}
 
 	@Test
 	void defaultInfoContributorsDisabledWithPrerequisitesInPlace() {
 		this.contextRunner.withUserConfiguration(GitPropertiesConfiguration.class, BuildPropertiesConfiguration.class)
-				.withPropertyValues("management.info.defaults.enabled=false")
-				.run((context) -> assertThat(context).doesNotHaveBean(InfoContributor.class));
+			.withPropertyValues("management.info.defaults.enabled=false")
+			.run((context) -> assertThat(context).doesNotHaveBean(InfoContributor.class));
 	}
 
 	@Test
@@ -101,15 +110,16 @@ class InfoContributorAutoConfigurationTests {
 	@Test
 	void gitPropertiesFullMode() {
 		this.contextRunner.withPropertyValues("management.info.git.mode=full")
-				.withUserConfiguration(GitPropertiesConfiguration.class).run((context) -> {
-					assertThat(context).hasSingleBean(GitInfoContributor.class);
-					Map<String, Object> content = invokeContributor(context.getBean(GitInfoContributor.class));
-					Object git = content.get("git");
-					assertThat(git).isInstanceOf(Map.class);
-					Map<String, Object> gitInfo = (Map<String, Object>) git;
-					assertThat(gitInfo).containsOnlyKeys("branch", "commit", "foo");
-					assertThat(gitInfo.get("foo")).isEqualTo("bar");
-				});
+			.withUserConfiguration(GitPropertiesConfiguration.class)
+			.run((context) -> {
+				assertThat(context).hasSingleBean(GitInfoContributor.class);
+				Map<String, Object> content = invokeContributor(context.getBean(GitInfoContributor.class));
+				Object git = content.get("git");
+				assertThat(git).isInstanceOf(Map.class);
+				Map<String, Object> gitInfo = (Map<String, Object>) git;
+				assertThat(gitInfo).containsOnlyKeys("branch", "commit", "foo");
+				assertThat(gitInfo).containsEntry("foo", "bar");
+			});
 	}
 
 	@Test
@@ -130,7 +140,7 @@ class InfoContributorAutoConfigurationTests {
 			assertThat(build).isInstanceOf(Map.class);
 			Map<String, Object> buildInfo = (Map<String, Object>) build;
 			assertThat(buildInfo).containsOnlyKeys("group", "artifact", "foo");
-			assertThat(buildInfo.get("foo")).isEqualTo("bar");
+			assertThat(buildInfo).containsEntry("foo", "bar");
 		});
 	}
 
@@ -139,7 +149,7 @@ class InfoContributorAutoConfigurationTests {
 		this.contextRunner.withUserConfiguration(CustomBuildInfoContributorConfiguration.class).run((context) -> {
 			assertThat(context).hasSingleBean(BuildInfoContributor.class);
 			assertThat(context.getBean(BuildInfoContributor.class))
-					.isSameAs(context.getBean("customBuildInfoContributor"));
+				.isSameAs(context.getBean("customBuildInfoContributor"));
 		});
 	}
 
@@ -161,6 +171,64 @@ class InfoContributorAutoConfigurationTests {
 			assertThat(content).containsKey("os");
 			assertThat(content.get("os")).isInstanceOf(OsInfo.class);
 		});
+	}
+
+	@Test
+	void processInfoContributor() {
+		this.contextRunner.withPropertyValues("management.info.process.enabled=true").run((context) -> {
+			assertThat(context).hasSingleBean(ProcessInfoContributor.class);
+			Map<String, Object> content = invokeContributor(context.getBean(ProcessInfoContributor.class));
+			assertThat(content).containsKey("process");
+			assertThat(content.get("process")).isInstanceOf(ProcessInfo.class);
+		});
+	}
+
+	@Test
+	void sslInfoContributor() {
+		this.contextRunner.withConfiguration(AutoConfigurations.of(SslAutoConfiguration.class))
+			.withPropertyValues("management.info.ssl.enabled=true", "server.ssl.bundle=ssltest",
+					"spring.ssl.bundle.jks.ssltest.keystore.location=classpath:test.jks")
+			.run((context) -> {
+				assertThat(context).hasSingleBean(SslInfoContributor.class);
+				assertThat(context).hasSingleBean(SslInfo.class);
+				Map<String, Object> content = invokeContributor(context.getBean(SslInfoContributor.class));
+				assertThat(content).containsKey("ssl");
+				assertThat(content.get("ssl")).isInstanceOf(SslInfo.class);
+			});
+	}
+
+	@Test
+	void sslInfoContributorWithWarningThreshold() {
+		this.contextRunner.withConfiguration(AutoConfigurations.of(SslAutoConfiguration.class))
+			.withPropertyValues("management.info.ssl.enabled=true", "server.ssl.bundle=ssltest",
+					"spring.ssl.bundle.jks.ssltest.keystore.location=classpath:test.jks",
+					"management.health.ssl.certificate-validity-warning-threshold=1d")
+			.run((context) -> {
+				assertThat(context).hasSingleBean(SslInfoContributor.class);
+				assertThat(context).hasSingleBean(SslInfo.class);
+				assertThat(context).hasSingleBean(SslHealthIndicatorProperties.class);
+				assertThat(context.getBean(SslHealthIndicatorProperties.class).getCertificateValidityWarningThreshold())
+					.isEqualTo(Duration.ofDays(1));
+				Map<String, Object> content = invokeContributor(context.getBean(SslInfoContributor.class));
+				assertThat(content).containsKey("ssl");
+				assertThat(content.get("ssl")).isInstanceOf(SslInfo.class);
+			});
+	}
+
+	@Test
+	void customSslInfo() {
+		this.contextRunner.withUserConfiguration(CustomSslInfoConfiguration.class)
+			.withConfiguration(AutoConfigurations.of(SslAutoConfiguration.class))
+			.withPropertyValues("management.info.ssl.enabled=true", "server.ssl.bundle=ssltest",
+					"spring.ssl.bundle.jks.ssltest.keystore.location=classpath:test.jks")
+			.run((context) -> {
+				assertThat(context).hasSingleBean(SslInfoContributor.class);
+				assertThat(context).hasSingleBean(SslInfo.class);
+				assertThat(context.getBean(SslInfo.class)).isSameAs(context.getBean("customSslInfo"));
+				Map<String, Object> content = invokeContributor(context.getBean(SslInfoContributor.class));
+				assertThat(content).containsKey("ssl");
+				assertThat(content.get("ssl")).isInstanceOf(SslInfo.class);
+			});
 	}
 
 	private Map<String, Object> invokeContributor(InfoContributor contributor) {
@@ -224,6 +292,16 @@ class InfoContributorAutoConfigurationTests {
 		@Bean
 		BuildInfoContributor customBuildInfoContributor() {
 			return new BuildInfoContributor(new BuildProperties(new Properties()));
+		}
+
+	}
+
+	@Configuration(proxyBeanMethods = false)
+	static class CustomSslInfoConfiguration {
+
+		@Bean
+		SslInfo customSslInfo(SslBundles sslBundles) {
+			return new SslInfo(sslBundles, Duration.ofDays(7));
 		}
 
 	}

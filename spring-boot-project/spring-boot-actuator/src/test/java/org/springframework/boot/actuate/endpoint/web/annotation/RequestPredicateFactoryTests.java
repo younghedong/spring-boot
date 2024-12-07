@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2019 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -42,22 +42,22 @@ class RequestPredicateFactoryTests {
 	private final RequestPredicateFactory factory = new RequestPredicateFactory(
 			new EndpointMediaTypes(Collections.emptyList(), Collections.emptyList()));
 
-	private String rootPath = "/root";
+	private final String rootPath = "/root";
 
 	@Test
 	void getRequestPredicateWhenHasMoreThanOneMatchAllThrowsException() {
 		DiscoveredOperationMethod operationMethod = getDiscoveredOperationMethod(MoreThanOneMatchAll.class);
 		assertThatIllegalStateException()
-				.isThrownBy(() -> this.factory.getRequestPredicate(this.rootPath, operationMethod))
-				.withMessage("@Selector annotation with Match.ALL_REMAINING must be unique");
+			.isThrownBy(() -> this.factory.getRequestPredicate(this.rootPath, operationMethod))
+			.withMessage("@Selector annotation with Match.ALL_REMAINING must be unique");
 	}
 
 	@Test
 	void getRequestPredicateWhenMatchAllIsNotLastParameterThrowsException() {
 		DiscoveredOperationMethod operationMethod = getDiscoveredOperationMethod(MatchAllIsNotLastParameter.class);
 		assertThatIllegalStateException()
-				.isThrownBy(() -> this.factory.getRequestPredicate(this.rootPath, operationMethod))
-				.withMessage("@Selector annotation with Match.ALL_REMAINING must be the last parameter");
+			.isThrownBy(() -> this.factory.getRequestPredicate(this.rootPath, operationMethod))
+			.withMessage("@Selector annotation with Match.ALL_REMAINING must be the last parameter");
 	}
 
 	@Test
@@ -66,6 +66,13 @@ class RequestPredicateFactoryTests {
 		WebOperationRequestPredicate requestPredicate = this.factory.getRequestPredicate(this.rootPath,
 				operationMethod);
 		assertThat(requestPredicate.getPath()).isEqualTo("/root/{one}/{*two}");
+	}
+
+	@Test
+	void getRequestPredicateWithSlashRootReturnsPredicateWithPathWithoutDoubleSlash() {
+		DiscoveredOperationMethod operationMethod = getDiscoveredOperationMethod(ValidSelectors.class);
+		WebOperationRequestPredicate requestPredicate = this.factory.getRequestPredicate("/", operationMethod);
+		assertThat(requestPredicate.getPath()).isEqualTo("/{one}/{*two}");
 	}
 
 	private DiscoveredOperationMethod getDiscoveredOperationMethod(Class<?> source) {

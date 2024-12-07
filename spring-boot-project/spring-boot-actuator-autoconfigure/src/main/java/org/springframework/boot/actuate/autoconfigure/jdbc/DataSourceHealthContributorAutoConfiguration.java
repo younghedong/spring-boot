@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2022 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,6 +16,7 @@
 
 package org.springframework.boot.actuate.autoconfigure.jdbc;
 
+import java.sql.SQLException;
 import java.util.Collection;
 import java.util.Iterator;
 import java.util.Map;
@@ -73,7 +74,7 @@ public class DataSourceHealthContributorAutoConfiguration implements Initializin
 
 	public DataSourceHealthContributorAutoConfiguration(
 			ObjectProvider<DataSourcePoolMetadataProvider> metadataProviders) {
-		this.metadataProviders = metadataProviders.orderedStream().collect(Collectors.toList());
+		this.metadataProviders = metadataProviders.orderedStream().toList();
 	}
 
 	@Override
@@ -86,9 +87,10 @@ public class DataSourceHealthContributorAutoConfiguration implements Initializin
 	public HealthContributor dbHealthContributor(Map<String, DataSource> dataSources,
 			DataSourceHealthIndicatorProperties dataSourceHealthIndicatorProperties) {
 		if (dataSourceHealthIndicatorProperties.isIgnoreRoutingDataSources()) {
-			Map<String, DataSource> filteredDatasources = dataSources.entrySet().stream()
-					.filter((e) -> !(e.getValue() instanceof AbstractRoutingDataSource))
-					.collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
+			Map<String, DataSource> filteredDatasources = dataSources.entrySet()
+				.stream()
+				.filter((e) -> !isRoutingDataSource(e.getValue()))
+				.collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
 			return createContributor(filteredDatasources);
 		}
 		return createContributor(dataSources);
@@ -103,9 +105,8 @@ public class DataSourceHealthContributorAutoConfiguration implements Initializin
 	}
 
 	private HealthContributor createContributor(DataSource source) {
-		if (source instanceof AbstractRoutingDataSource) {
-			AbstractRoutingDataSource routingDataSource = (AbstractRoutingDataSource) source;
-			return new RoutingDataSourceHealthContributor(routingDataSource, this::createContributor);
+		if (isRoutingDataSource(source)) {
+			return new RoutingDataSourceHealthContributor(extractRoutingDataSource(source), this::createContributor);
 		}
 		return new DataSourceHealthIndicator(source, getValidationQuery(source));
 	}
@@ -113,6 +114,30 @@ public class DataSourceHealthContributorAutoConfiguration implements Initializin
 	private String getValidationQuery(DataSource source) {
 		DataSourcePoolMetadata poolMetadata = this.poolMetadataProvider.getDataSourcePoolMetadata(source);
 		return (poolMetadata != null) ? poolMetadata.getValidationQuery() : null;
+	}
+
+	private static boolean isRoutingDataSource(DataSource dataSource) {
+		if (dataSource instanceof AbstractRoutingDataSource) {
+			return true;
+		}
+		try {
+			return dataSource.isWrapperFor(AbstractRoutingDataSource.class);
+		}
+		catch (SQLException ex) {
+			return false;
+		}
+	}
+
+	private static AbstractRoutingDataSource extractRoutingDataSource(DataSource dataSource) {
+		if (dataSource instanceof AbstractRoutingDataSource routingDataSource) {
+			return routingDataSource;
+		}
+		try {
+			return dataSource.unwrap(AbstractRoutingDataSource.class);
+		}
+		catch (SQLException ex) {
+			throw new IllegalStateException("Failed to unwrap AbstractRoutingDataSource from " + dataSource, ex);
+		}
 	}
 
 	/**
@@ -128,9 +153,11 @@ public class DataSourceHealthContributorAutoConfiguration implements Initializin
 
 		RoutingDataSourceHealthContributor(AbstractRoutingDataSource routingDataSource,
 				Function<DataSource, HealthContributor> contributorFunction) {
-			Map<String, DataSource> routedDataSources = routingDataSource.getResolvedDataSources().entrySet().stream()
-					.collect(Collectors.toMap((e) -> Objects.toString(e.getKey(), UNNAMED_DATASOURCE_KEY),
-							Map.Entry::getValue));
+			Map<String, DataSource> routedDataSources = routingDataSource.getResolvedDataSources()
+				.entrySet()
+				.stream()
+				.collect(Collectors.toMap((e) -> Objects.toString(e.getKey(), UNNAMED_DATASOURCE_KEY),
+						Map.Entry::getValue));
 			this.delegate = CompositeHealthContributor.fromMap(routedDataSources, contributorFunction);
 		}
 

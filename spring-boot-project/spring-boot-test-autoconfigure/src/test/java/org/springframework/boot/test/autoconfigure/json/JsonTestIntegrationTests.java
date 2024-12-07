@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2019 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,6 +15,9 @@
  */
 
 package org.springframework.boot.test.autoconfigure.json;
+
+import java.util.Date;
+import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
 
@@ -75,7 +78,7 @@ class JsonTestIntegrationTests {
 
 	@Test
 	void jacksonCustom() throws Exception {
-		ExampleCustomObject object = new ExampleCustomObject("spring");
+		ExampleCustomObject object = new ExampleCustomObject("spring", new Date(), UUID.randomUUID());
 		assertThat(this.jacksonCustomJson.write(object)).isEqualToJson("example.json");
 	}
 
@@ -98,7 +101,8 @@ class JsonTestIntegrationTests {
 		ExampleJsonObjectWithView object = new ExampleJsonObjectWithView();
 		object.setValue("spring");
 		JsonContent<ExampleJsonObjectWithView> content = this.jacksonWithViewJson
-				.forView(ExampleJsonObjectWithView.TestView.class).write(object);
+			.forView(ExampleJsonObjectWithView.TestView.class)
+			.write(object);
 		assertThat(content).doesNotHaveJsonPathValue("id");
 		assertThat(content).isEqualToJson("example.json");
 	}

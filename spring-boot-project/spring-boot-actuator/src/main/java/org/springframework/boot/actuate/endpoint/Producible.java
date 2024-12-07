@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2021 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -26,7 +26,7 @@ import org.springframework.util.MimeType;
  * producible mime-types.
  * <p>
  * Can be used with {@link ReadOperation @ReadOperation},
- * {@link WriteOperation @ReadOperation} and {@link DeleteOperation @ReadOperation}
+ * {@link WriteOperation @WriteOperation} and {@link DeleteOperation @DeleteOperation}
  * annotations to quickly define a list of {@code produces} values.
  * <p>
  * {@link Producible} types can also be injected into operations when the underlying
@@ -49,9 +49,9 @@ public interface Producible<E extends Enum<E> & Producible<E>> {
 
 	/**
 	 * Return if this enum value should be used as the default value when an accept header
-	 * of &#42;&#47;&#42; is provided, or if the accept header is missing. Only one value
-	 * can be marked as default. If no value is marked, then the value with the highest
-	 * {@link Enum#ordinal() ordinal} is used as the default.
+	 * of &#42;&#47;&#42; is provided, or if the {@code Accept} header is missing. Only
+	 * one value can be marked as default. If no value is marked, then the value with the
+	 * highest {@link Enum#ordinal() ordinal} is used as the default.
 	 * @return if this value should be used as the default value
 	 * @since 2.5.6
 	 */

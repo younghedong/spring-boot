@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2021 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,8 +17,9 @@
 package org.springframework.boot.build.bom.bomr;
 
 import java.io.StringReader;
-import java.util.Arrays;
+import java.net.URI;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.SortedSet;
@@ -29,15 +30,20 @@ import javax.xml.parsers.DocumentBuilderFactory;
 import javax.xml.xpath.XPathConstants;
 import javax.xml.xpath.XPathFactory;
 
+import org.gradle.api.artifacts.repositories.MavenArtifactRepository;
 import org.w3c.dom.Document;
 import org.w3c.dom.NodeList;
 import org.xml.sax.InputSource;
 
 import org.springframework.boot.build.bom.bomr.version.DependencyVersion;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.converter.StringHttpMessageConverter;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestTemplate;
+import org.springframework.web.util.UriComponentsBuilder;
 
 /**
  * A {@link VersionResolver} that examines {@code maven-metadata.xml} to determine the
@@ -49,35 +55,46 @@ final class MavenMetadataVersionResolver implements VersionResolver {
 
 	private final RestTemplate rest;
 
-	private final Collection<String> repositoryUrls;
+	private final Collection<MavenArtifactRepository> repositories;
 
-	MavenMetadataVersionResolver(Collection<String> repositoryUrls) {
-		this(new RestTemplate(Arrays.asList(new StringHttpMessageConverter())), repositoryUrls);
+	MavenMetadataVersionResolver(Collection<MavenArtifactRepository> repositories) {
+		this(new RestTemplate(Collections.singletonList(new StringHttpMessageConverter())), repositories);
 	}
 
-	MavenMetadataVersionResolver(RestTemplate restTemplate, Collection<String> repositoryUrls) {
+	MavenMetadataVersionResolver(RestTemplate restTemplate, Collection<MavenArtifactRepository> repositories) {
 		this.rest = restTemplate;
-		this.repositoryUrls = repositoryUrls;
+		this.repositories = repositories;
 	}
 
 	@Override
 	public SortedSet<DependencyVersion> resolveVersions(String groupId, String artifactId) {
 		Set<String> versions = new HashSet<>();
-		for (String repositoryUrl : this.repositoryUrls) {
-			versions.addAll(resolveVersions(groupId, artifactId, repositoryUrl));
+		for (MavenArtifactRepository repository : this.repositories) {
+			versions.addAll(resolveVersions(groupId, artifactId, repository));
 		}
-		return new TreeSet<>(versions.stream().map(DependencyVersion::parse).collect(Collectors.toSet()));
+		return versions.stream().map(DependencyVersion::parse).collect(Collectors.toCollection(TreeSet::new));
 	}
 
-	private Set<String> resolveVersions(String groupId, String artifactId, String repositoryUrl) {
+	private Set<String> resolveVersions(String groupId, String artifactId, MavenArtifactRepository repository) {
 		Set<String> versions = new HashSet<>();
-		String url = repositoryUrl + "/" + groupId.replace('.', '/') + "/" + artifactId + "/maven-metadata.xml";
+		URI url = UriComponentsBuilder.fromUri(repository.getUrl())
+			.pathSegment(groupId.replace('.', '/'), artifactId, "maven-metadata.xml")
+			.build()
+			.toUri();
 		try {
-			String metadata = this.rest.getForObject(url, String.class);
-			Document metadataDocument = DocumentBuilderFactory.newInstance().newDocumentBuilder()
-					.parse(new InputSource(new StringReader(metadata)));
-			NodeList versionNodes = (NodeList) XPathFactory.newInstance().newXPath()
-					.evaluate("/metadata/versioning/versions/version", metadataDocument, XPathConstants.NODESET);
+			HttpHeaders headers = new HttpHeaders();
+			String username = repository.getCredentials().getUsername();
+			if (username != null) {
+				headers.setBasicAuth(username, repository.getCredentials().getPassword());
+			}
+			HttpEntity<Void> request = new HttpEntity<>(headers);
+			String metadata = this.rest.exchange(url, HttpMethod.GET, request, String.class).getBody();
+			Document metadataDocument = DocumentBuilderFactory.newInstance()
+				.newDocumentBuilder()
+				.parse(new InputSource(new StringReader(metadata)));
+			NodeList versionNodes = (NodeList) XPathFactory.newInstance()
+				.newXPath()
+				.evaluate("/metadata/versioning/versions/version", metadataDocument, XPathConstants.NODESET);
 			for (int i = 0; i < versionNodes.getLength(); i++) {
 				versions.add(versionNodes.item(i).getTextContent());
 			}
@@ -90,7 +107,7 @@ final class MavenMetadataVersionResolver implements VersionResolver {
 		}
 		catch (Exception ex) {
 			System.err.println("Failed to resolve versions for module " + groupId + ":" + artifactId + " in repository "
-					+ repositoryUrl + ": " + ex.getMessage());
+					+ repository + ": " + ex.getMessage());
 		}
 		return versions;
 	}

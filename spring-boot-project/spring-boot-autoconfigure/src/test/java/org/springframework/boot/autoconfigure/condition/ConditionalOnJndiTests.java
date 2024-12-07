@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2019 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -51,7 +51,7 @@ class ConditionalOnJndiTests {
 
 	private final ApplicationContextRunner contextRunner = new ApplicationContextRunner();
 
-	private MockableOnJndi condition = new MockableOnJndi();
+	private final MockableOnJndi condition = new MockableOnJndi();
 
 	@BeforeEach
 	void setupThreadContextClassLoader() {
@@ -74,21 +74,21 @@ class ConditionalOnJndiTests {
 	@Test
 	void jndiNotAvailable() {
 		this.contextRunner.withUserConfiguration(JndiAvailableConfiguration.class, JndiConditionConfiguration.class)
-				.run((context) -> assertThat(context).doesNotHaveBean(String.class));
+			.run((context) -> assertThat(context).doesNotHaveBean(String.class));
 	}
 
 	@Test
 	void jndiAvailable() {
 		setupJndi();
 		this.contextRunner.withUserConfiguration(JndiAvailableConfiguration.class, JndiConditionConfiguration.class)
-				.run((context) -> assertThat(context).hasSingleBean(String.class));
+			.run((context) -> assertThat(context).hasSingleBean(String.class));
 	}
 
 	@Test
 	void jndiLocationNotBound() {
 		setupJndi();
 		this.contextRunner.withUserConfiguration(JndiConditionConfiguration.class)
-				.run((context) -> assertThat(context).doesNotHaveBean(String.class));
+			.run((context) -> assertThat(context).doesNotHaveBean(String.class));
 	}
 
 	@Test
@@ -96,19 +96,19 @@ class ConditionalOnJndiTests {
 		setupJndi();
 		TestableInitialContextFactory.bind("java:/FooManager", new Object());
 		this.contextRunner.withUserConfiguration(JndiConditionConfiguration.class)
-				.run((context) -> assertThat(context).hasSingleBean(String.class));
+			.run((context) -> assertThat(context).hasSingleBean(String.class));
 	}
 
 	@Test
 	void jndiLocationNotFound() {
-		ConditionOutcome outcome = this.condition.getMatchOutcome(null, mockMetaData("java:/a"));
+		ConditionOutcome outcome = this.condition.getMatchOutcome(null, mockMetadata("java:/a"));
 		assertThat(outcome.isMatch()).isFalse();
 	}
 
 	@Test
 	void jndiLocationFound() {
 		this.condition.setFoundLocation("java:/b");
-		ConditionOutcome outcome = this.condition.getMatchOutcome(null, mockMetaData("java:/a", "java:/b"));
+		ConditionOutcome outcome = this.condition.getMatchOutcome(null, mockMetadata("java:/a", "java:/b"));
 		assertThat(outcome.isMatch()).isTrue();
 	}
 
@@ -117,7 +117,7 @@ class ConditionalOnJndiTests {
 		System.setProperty(Context.INITIAL_CONTEXT_FACTORY, TestableInitialContextFactory.class.getName());
 	}
 
-	private AnnotatedTypeMetadata mockMetaData(String... value) {
+	private AnnotatedTypeMetadata mockMetadata(String... value) {
 		AnnotatedTypeMetadata metadata = mock(AnnotatedTypeMetadata.class);
 		Map<String, Object> attributes = new HashMap<>();
 		attributes.put("value", value);
@@ -149,7 +149,7 @@ class ConditionalOnJndiTests {
 
 	static class MockableOnJndi extends OnJndiCondition {
 
-		private boolean jndiAvailable = true;
+		private final boolean jndiAvailable = true;
 
 		private String foundLocation;
 

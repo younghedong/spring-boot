@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2021 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -27,8 +27,14 @@ import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.boot.test.system.CapturedOutput;
 import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.boot.testsupport.BuildOutput;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.core.annotation.Order;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.BDDMockito.then;
+import static org.mockito.Mockito.mock;
 
 /**
  * Tests for {@link FreeMarkerAutoConfiguration}.
@@ -42,7 +48,7 @@ class FreeMarkerAutoConfigurationTests {
 	private final BuildOutput buildOutput = new BuildOutput(getClass());
 
 	private final ApplicationContextRunner contextRunner = new ApplicationContextRunner()
-			.withConfiguration(AutoConfigurations.of(FreeMarkerAutoConfiguration.class));
+		.withConfiguration(AutoConfigurations.of(FreeMarkerAutoConfiguration.class));
 
 	@Test
 	void renderNonWebAppTemplate() {
@@ -57,9 +63,9 @@ class FreeMarkerAutoConfigurationTests {
 	@Test
 	void nonExistentTemplateLocation(CapturedOutput output) {
 		this.contextRunner
-				.withPropertyValues("spring.freemarker.templateLoaderPath:"
-						+ "classpath:/does-not-exist/,classpath:/also-does-not-exist")
-				.run((context) -> assertThat(output).contains("Cannot find template location"));
+			.withPropertyValues("spring.freemarker.templateLoaderPath:"
+					+ "classpath:/does-not-exist/,classpath:/also-does-not-exist")
+			.run((context) -> assertThat(output).contains("Cannot find template location"));
 	}
 
 	@Test
@@ -67,23 +73,64 @@ class FreeMarkerAutoConfigurationTests {
 		File emptyDirectory = new File(this.buildOutput.getTestResourcesLocation(), "empty-templates/empty-directory");
 		emptyDirectory.mkdirs();
 		this.contextRunner
-				.withPropertyValues("spring.freemarker.templateLoaderPath:classpath:/empty-templates/empty-directory/")
-				.run((context) -> assertThat(output).doesNotContain("Cannot find template location"));
+			.withPropertyValues("spring.freemarker.templateLoaderPath:classpath:/empty-templates/empty-directory/")
+			.run((context) -> assertThat(output).doesNotContain("Cannot find template location"));
 	}
 
 	@Test
 	void nonExistentLocationAndEmptyLocation(CapturedOutput output) {
 		new File(this.buildOutput.getTestResourcesLocation(), "empty-templates/empty-directory").mkdirs();
 		this.contextRunner
-				.withPropertyValues("spring.freemarker.templateLoaderPath:"
-						+ "classpath:/does-not-exist/,classpath:/empty-templates/empty-directory/")
-				.run((context) -> assertThat(output).doesNotContain("Cannot find template location"));
+			.withPropertyValues("spring.freemarker.templateLoaderPath:"
+					+ "classpath:/does-not-exist/,classpath:/empty-templates/empty-directory/")
+			.run((context) -> assertThat(output).doesNotContain("Cannot find template location"));
+	}
+
+	@Test
+	void variableCustomizerShouldBeApplied() {
+		FreeMarkerVariablesCustomizer customizer = mock(FreeMarkerVariablesCustomizer.class);
+		this.contextRunner.withBean(FreeMarkerVariablesCustomizer.class, () -> customizer)
+			.run((context) -> then(customizer).should().customizeFreeMarkerVariables(any()));
+	}
+
+	@Test
+	@SuppressWarnings("unchecked")
+	void variableCustomizersShouldBeAppliedInOrder() {
+		this.contextRunner.withUserConfiguration(VariablesCustomizersConfiguration.class).run((context) -> {
+			assertThat(context).hasSingleBean(freemarker.template.Configuration.class);
+			freemarker.template.Configuration configuration = context.getBean(freemarker.template.Configuration.class);
+			assertThat(configuration.getSharedVariableNames()).contains("order", "one", "two");
+			assertThat(configuration.getSharedVariable("order")).hasToString("5");
+		});
 	}
 
 	public static class DataModel {
 
 		public String getGreeting() {
 			return "Hello World";
+		}
+
+	}
+
+	@Configuration(proxyBeanMethods = false)
+	static class VariablesCustomizersConfiguration {
+
+		@Bean
+		@Order(5)
+		FreeMarkerVariablesCustomizer variablesCustomizer() {
+			return (variables) -> {
+				variables.put("order", 5);
+				variables.put("one", "one");
+			};
+		}
+
+		@Bean
+		@Order(2)
+		FreeMarkerVariablesCustomizer anotherVariablesCustomizer() {
+			return (variables) -> {
+				variables.put("order", 2);
+				variables.put("two", "two");
+			};
 		}
 
 	}

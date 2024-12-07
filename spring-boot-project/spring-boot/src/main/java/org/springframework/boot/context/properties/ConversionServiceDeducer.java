@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2021 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -29,8 +29,10 @@ import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.core.convert.ConversionService;
 import org.springframework.core.convert.converter.Converter;
 import org.springframework.core.convert.converter.GenericConverter;
+import org.springframework.core.convert.support.DefaultConversionService;
 import org.springframework.format.Formatter;
 import org.springframework.format.FormatterRegistry;
+import org.springframework.format.support.FormattingConversionService;
 
 /**
  * Utility to deduce the {@link ConversionService} to use for configuration properties
@@ -49,24 +51,34 @@ class ConversionServiceDeducer {
 	List<ConversionService> getConversionServices() {
 		if (hasUserDefinedConfigurationServiceBean()) {
 			return Collections.singletonList(this.applicationContext
-					.getBean(ConfigurableApplicationContext.CONVERSION_SERVICE_BEAN_NAME, ConversionService.class));
+				.getBean(ConfigurableApplicationContext.CONVERSION_SERVICE_BEAN_NAME, ConversionService.class));
 		}
-		if (this.applicationContext instanceof ConfigurableApplicationContext) {
-			return getConversionServices((ConfigurableApplicationContext) this.applicationContext);
+		if (this.applicationContext instanceof ConfigurableApplicationContext configurableContext) {
+			return getConversionServices(configurableContext);
 		}
 		return null;
 	}
 
 	private List<ConversionService> getConversionServices(ConfigurableApplicationContext applicationContext) {
 		List<ConversionService> conversionServices = new ArrayList<>();
+		ConverterBeans converterBeans = new ConverterBeans(applicationContext);
+		if (!converterBeans.isEmpty()) {
+			FormattingConversionService beansConverterService = new FormattingConversionService();
+			DefaultConversionService.addCollectionConverters(beansConverterService);
+			beansConverterService
+				.addConverter(new ConfigurationPropertiesCharSequenceToObjectConverter(beansConverterService));
+			converterBeans.addTo(beansConverterService);
+			conversionServices.add(beansConverterService);
+		}
 		if (applicationContext.getBeanFactory().getConversionService() != null) {
 			conversionServices.add(applicationContext.getBeanFactory().getConversionService());
 		}
-		ConverterBeans converterBeans = new ConverterBeans(applicationContext);
 		if (!converterBeans.isEmpty()) {
-			ApplicationConversionService beansConverterService = new ApplicationConversionService();
-			converterBeans.addTo(beansConverterService);
-			conversionServices.add(beansConverterService);
+			// Converters beans used to be added to a custom ApplicationConversionService
+			// after the BeanFactory's ConversionService. For backwards compatibility, we
+			// add an ApplicationConversationService as a fallback in the same place in
+			// the list.
+			conversionServices.add(ApplicationConversionService.getSharedInstance());
 		}
 		return conversionServices;
 	}
@@ -74,7 +86,7 @@ class ConversionServiceDeducer {
 	private boolean hasUserDefinedConfigurationServiceBean() {
 		String beanName = ConfigurableApplicationContext.CONVERSION_SERVICE_BEAN_NAME;
 		return this.applicationContext.containsBean(beanName) && this.applicationContext.getAutowireCapableBeanFactory()
-				.isTypeMatch(beanName, ConversionService.class);
+			.isTypeMatch(beanName, ConversionService.class);
 	}
 
 	private static class ConverterBeans {

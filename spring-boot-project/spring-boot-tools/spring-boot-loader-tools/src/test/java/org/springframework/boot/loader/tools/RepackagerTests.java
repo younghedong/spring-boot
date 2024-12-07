@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2022 the original author or authors.
+ * Copyright 2012-2023 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -28,6 +28,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Enumeration;
 import java.util.List;
+import java.util.jar.Attributes;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
 import java.util.jar.Manifest;
@@ -79,7 +80,7 @@ class RepackagerTests extends AbstractPackagerTests<Repackager> {
 		repackager.repackage(NO_LIBRARIES);
 		Manifest actualManifest = getPackagedManifest();
 		assertThat(actualManifest.getMainAttributes().getValue("Main-Class"))
-				.isEqualTo("org.springframework.boot.loader.JarLauncher");
+			.isEqualTo("org.springframework.boot.loader.launch.JarLauncher");
 		assertThat(actualManifest.getMainAttributes().getValue("Start-Class")).isEqualTo("a.b.C");
 		assertThat(hasPackagedLauncherClasses()).isTrue();
 	}
@@ -121,7 +122,7 @@ class RepackagerTests extends AbstractPackagerTests<Repackager> {
 		this.testJarFile.addClass("a/b/C.class", ClassWithMainMethod.class);
 		Repackager repackager = createRepackager(this.testJarFile.getFile(), true);
 		assertThatIllegalArgumentException().isThrownBy(() -> repackager.repackage(null, NO_LIBRARIES))
-				.withMessageContaining("Invalid destination");
+			.withMessageContaining("Invalid destination");
 	}
 
 	@Test
@@ -129,7 +130,7 @@ class RepackagerTests extends AbstractPackagerTests<Repackager> {
 		this.testJarFile.addClass("a/b/C.class", ClassWithMainMethod.class);
 		Repackager repackager = createRepackager(this.testJarFile.getFile(), true);
 		assertThatIllegalArgumentException().isThrownBy(() -> repackager.repackage(this.tempDir, NO_LIBRARIES))
-				.withMessageContaining("Invalid destination");
+			.withMessageContaining("Invalid destination");
 	}
 
 	@Test
@@ -166,7 +167,7 @@ class RepackagerTests extends AbstractPackagerTests<Repackager> {
 		}
 		try {
 			assertThat(Files.getPosixFilePermissions(this.destination.toPath()))
-					.contains(PosixFilePermission.OWNER_EXECUTE);
+				.contains(PosixFilePermission.OWNER_EXECUTE);
 		}
 		catch (UnsupportedOperationException ex) {
 			// Probably running the test on Windows
@@ -185,8 +186,10 @@ class RepackagerTests extends AbstractPackagerTests<Repackager> {
 					timestamp = entry.getTime();
 				}
 				else {
-					assertThat(entry.getTime()).withFailMessage("Expected time %d to be equal to %d for entry %s",
-							entry.getTime(), timestamp, entry.getName()).isEqualTo(timestamp);
+					assertThat(entry.getTime())
+						.withFailMessage("Expected time %d to be equal to %d for entry %s", entry.getTime(), timestamp,
+								entry.getName())
+						.isEqualTo(timestamp);
 				}
 			}
 		}
@@ -198,8 +201,9 @@ class RepackagerTests extends AbstractPackagerTests<Repackager> {
 		Repackager repackager = createRepackager(this.testJarFile.getFile(), true);
 		long timestamp = OffsetDateTime.of(2000, 1, 1, 0, 0, 0, 0, ZoneOffset.UTC).toInstant().toEpochMilli();
 		repackager.repackage(this.destination, NO_LIBRARIES, null, FileTime.fromMillis(timestamp));
+		long offsetTimestamp = DefaultTimeZoneOffset.INSTANCE.removeFrom(timestamp);
 		for (ZipArchiveEntry entry : getAllPackagedEntries()) {
-			assertThat(entry.getTime()).isEqualTo(timestamp);
+			assertThat(entry.getTime()).isEqualTo(offsetTimestamp);
 		}
 	}
 
@@ -215,9 +219,23 @@ class RepackagerTests extends AbstractPackagerTests<Repackager> {
 		assertThat(stopWatch.getTotalTimeMillis()).isLessThan(5000);
 	}
 
+	@Test
+	void signedJar() throws Exception {
+		Repackager packager = createPackager();
+		packager.setMainClass("a.b.C");
+		Manifest manifest = new Manifest();
+		Attributes attributes = new Attributes();
+		attributes.putValue("SHA1-Digest", "0000");
+		manifest.getEntries().put("a/b/C.class", attributes);
+		TestJarFile libJar = new TestJarFile(this.tempDir);
+		libJar.addManifest(manifest);
+		execute(packager, (callback) -> callback.library(newLibrary(libJar.getFile(), LibraryScope.COMPILE, false)));
+		assertThat(hasPackagedEntry("META-INF/BOOT.SF")).isTrue();
+	}
+
 	private boolean hasLauncherClasses(File file) throws IOException {
 		return hasEntry(file, "org/springframework/boot/")
-				&& hasEntry(file, "org/springframework/boot/loader/JarLauncher.class");
+				&& hasEntry(file, "org/springframework/boot/loader/launch/JarLauncher.class");
 	}
 
 	private boolean hasEntry(File file, String name) throws IOException {

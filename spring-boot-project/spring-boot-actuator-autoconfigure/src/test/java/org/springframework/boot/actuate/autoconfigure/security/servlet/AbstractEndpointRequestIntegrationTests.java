@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2022 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -32,19 +32,22 @@ import org.springframework.boot.actuate.autoconfigure.endpoint.web.WebEndpointAu
 import org.springframework.boot.actuate.autoconfigure.web.server.ManagementContextAutoConfiguration;
 import org.springframework.boot.actuate.endpoint.annotation.Endpoint;
 import org.springframework.boot.actuate.endpoint.annotation.ReadOperation;
-import org.springframework.boot.actuate.endpoint.web.EndpointServlet;
-import org.springframework.boot.actuate.endpoint.web.annotation.ServletEndpoint;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.autoconfigure.jackson.JacksonAutoConfiguration;
 import org.springframework.boot.autoconfigure.security.servlet.SecurityAutoConfiguration;
-import org.springframework.boot.autoconfigure.security.servlet.UserDetailsServiceAutoConfiguration;
 import org.springframework.boot.test.context.assertj.AssertableWebApplicationContext;
 import org.springframework.boot.test.context.runner.WebApplicationContextRunner;
 import org.springframework.boot.web.servlet.context.AnnotationConfigServletWebServerApplicationContext;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.core.userdetails.User;
+import org.springframework.security.provisioning.InMemoryUserDetailsManager;
+import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.test.web.reactive.server.WebTestClient;
+
+import static org.springframework.security.config.Customizer.withDefaults;
 
 /**
  * Abstract base class for {@link EndpointRequest} tests.
@@ -66,8 +69,12 @@ abstract class AbstractEndpointRequestIntegrationTests {
 		getContextRunner().withPropertyValues("spring.security.user.password=password").run((context) -> {
 			WebTestClient webTestClient = getWebTestClient(context);
 			webTestClient.get().uri("/actuator/e2").exchange().expectStatus().isUnauthorized();
-			webTestClient.get().uri("/actuator/e2").header("Authorization", getBasicAuth()).exchange().expectStatus()
-					.isOk();
+			webTestClient.get()
+				.uri("/actuator/e2")
+				.header("Authorization", getBasicAuth())
+				.exchange()
+				.expectStatus()
+				.isOk();
 		});
 	}
 
@@ -76,16 +83,24 @@ abstract class AbstractEndpointRequestIntegrationTests {
 		getContextRunner().run((context) -> {
 			WebTestClient webTestClient = getWebTestClient(context);
 			webTestClient.get().uri("/actuator").exchange().expectStatus().isOk();
-			webTestClient.get().uri("/actuator/").exchange().expectStatus().isOk();
+			webTestClient.get()
+				.uri("/actuator/")
+				.exchange()
+				.expectStatus()
+				.isEqualTo(expectedStatusWithTrailingSlash());
 		});
+	}
+
+	protected HttpStatus expectedStatusWithTrailingSlash() {
+		return HttpStatus.NOT_FOUND;
 	}
 
 	protected final WebApplicationContextRunner getContextRunner() {
 		return createContextRunner().withPropertyValues("management.endpoints.web.exposure.include=*")
-				.withUserConfiguration(BaseConfiguration.class, SecurityConfiguration.class).withConfiguration(
-						AutoConfigurations.of(JacksonAutoConfiguration.class, SecurityAutoConfiguration.class,
-								UserDetailsServiceAutoConfiguration.class, EndpointAutoConfiguration.class,
-								WebEndpointAutoConfiguration.class, ManagementContextAutoConfiguration.class));
+			.withUserConfiguration(BaseConfiguration.class, SecurityConfiguration.class)
+			.withConfiguration(AutoConfigurations.of(JacksonAutoConfiguration.class, SecurityAutoConfiguration.class,
+					EndpointAutoConfiguration.class, WebEndpointAutoConfiguration.class,
+					ManagementContextAutoConfiguration.class));
 
 	}
 
@@ -93,9 +108,12 @@ abstract class AbstractEndpointRequestIntegrationTests {
 
 	protected WebTestClient getWebTestClient(AssertableWebApplicationContext context) {
 		int port = context.getSourceApplicationContext(AnnotationConfigServletWebServerApplicationContext.class)
-				.getWebServer().getPort();
-		return WebTestClient.bindToServer().baseUrl("http://localhost:" + port).responseTimeout(Duration.ofMinutes(5))
-				.build();
+			.getWebServer()
+			.getPort();
+		return WebTestClient.bindToServer()
+			.baseUrl("http://localhost:" + port)
+			.responseTimeout(Duration.ofMinutes(5))
+			.build();
 	}
 
 	String getBasicAuth() {
@@ -157,12 +175,14 @@ abstract class AbstractEndpointRequestIntegrationTests {
 
 	}
 
-	@ServletEndpoint(id = "se1")
-	static class TestServletEndpoint implements Supplier<EndpointServlet> {
+	@org.springframework.boot.actuate.endpoint.web.annotation.ServletEndpoint(id = "se1")
+	@SuppressWarnings({ "deprecation", "removal" })
+	static class TestServletEndpoint
+			implements Supplier<org.springframework.boot.actuate.endpoint.web.EndpointServlet> {
 
 		@Override
-		public EndpointServlet get() {
-			return new EndpointServlet(ExampleServlet.class);
+		public org.springframework.boot.actuate.endpoint.web.EndpointServlet get() {
+			return new org.springframework.boot.actuate.endpoint.web.EndpointServlet(ExampleServlet.class);
 		}
 
 	}
@@ -171,22 +191,21 @@ abstract class AbstractEndpointRequestIntegrationTests {
 	static class SecurityConfiguration {
 
 		@Bean
-		@SuppressWarnings("deprecation")
-		org.springframework.security.config.annotation.web.configuration.WebSecurityConfigurerAdapter webSecurityConfigurerAdapter() {
-			return new org.springframework.security.config.annotation.web.configuration.WebSecurityConfigurerAdapter() {
+		InMemoryUserDetailsManager userDetailsManager() {
+			return new InMemoryUserDetailsManager(
+					User.withUsername("user").password("{noop}password").roles("admin").build());
+		}
 
-				@Override
-				protected void configure(HttpSecurity http) throws Exception {
-					http.authorizeRequests((requests) -> {
-						requests.requestMatchers(EndpointRequest.toLinks()).permitAll();
-						requests.requestMatchers(EndpointRequest.to(TestEndpoint1.class)).permitAll();
-						requests.requestMatchers(EndpointRequest.toAnyEndpoint()).authenticated();
-						requests.anyRequest().hasRole("ADMIN");
-					});
-					http.httpBasic();
-				}
-
-			};
+		@Bean
+		SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+			http.authorizeHttpRequests((requests) -> {
+				requests.requestMatchers(EndpointRequest.toLinks()).permitAll();
+				requests.requestMatchers(EndpointRequest.to(TestEndpoint1.class)).permitAll();
+				requests.requestMatchers(EndpointRequest.toAnyEndpoint()).authenticated();
+				requests.anyRequest().hasRole("ADMIN");
+			});
+			http.httpBasic(withDefaults());
+			return http.build();
 		}
 
 	}

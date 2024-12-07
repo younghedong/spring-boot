@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2021 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -55,9 +55,11 @@ public class IntegrationTestPlugin implements Plugin<Project> {
 		project.getTasks().getByName(LifecycleBasePlugin.CHECK_TASK_NAME).dependsOn(intTest);
 		project.getPlugins().withType(EclipsePlugin.class, (eclipsePlugin) -> {
 			EclipseModel eclipse = project.getExtensions().getByType(EclipseModel.class);
-			eclipse.classpath((classpath) -> classpath.getPlusConfigurations().add(
-					project.getConfigurations().getByName(intTestSourceSet.getRuntimeClasspathConfigurationName())));
+			eclipse.classpath((classpath) -> classpath.getPlusConfigurations()
+				.add(project.getConfigurations().getByName(intTestSourceSet.getRuntimeClasspathConfigurationName())));
 		});
+		project.getDependencies()
+			.add(intTestSourceSet.getRuntimeOnlyConfigurationName(), "org.junit.platform:junit-platform-launcher");
 	}
 
 	private SourceSet createSourceSet(Project project) {

@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2021 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,7 +18,6 @@ package org.springframework.boot.autoconfigure.task;
 
 import java.lang.reflect.Method;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -43,7 +42,7 @@ import org.springframework.util.ClassUtils;
  */
 class ScheduledBeanLazyInitializationExcludeFilter implements LazyInitializationExcludeFilter {
 
-	private final Set<Class<?>> nonAnnotatedClasses = Collections.newSetFromMap(new ConcurrentHashMap<>(64));
+	private final Set<Class<?>> nonAnnotatedClasses = ConcurrentHashMap.newKeySet(64);
 
 	ScheduledBeanLazyInitializationExcludeFilter() {
 		// Ignore AOP infrastructure such as scoped proxies.
@@ -64,7 +63,7 @@ class ScheduledBeanLazyInitializationExcludeFilter implements LazyInitialization
 			Map<Method, Set<Scheduled>> annotatedMethods = MethodIntrospector.selectMethods(targetType,
 					(MethodIntrospector.MetadataLookup<Set<Scheduled>>) (method) -> {
 						Set<Scheduled> scheduledAnnotations = AnnotatedElementUtils
-								.getMergedRepeatableAnnotations(method, Scheduled.class, Schedules.class);
+							.getMergedRepeatableAnnotations(method, Scheduled.class, Schedules.class);
 						return (!scheduledAnnotations.isEmpty() ? scheduledAnnotations : null);
 					});
 			if (annotatedMethods.isEmpty()) {

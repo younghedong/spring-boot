@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2020 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -28,12 +28,18 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * Tests for {@link MockBean} with abstract class and generics.
  *
+ * @param <T> type of thing
+ * @param <U> type of something
  * @author Madhura Bhave
+ * @deprecated since 3.4.0 for removal in 3.6.0
  */
+@SuppressWarnings("removal")
+@Deprecated(since = "3.4.0", forRemoval = true)
 @SpringBootTest(classes = AbstractMockBeanOnGenericTests.TestConfiguration.class)
 abstract class AbstractMockBeanOnGenericTests<T extends AbstractMockBeanOnGenericTests.Thing<U>, U extends AbstractMockBeanOnGenericTests.Something> {
 
 	@Autowired
+	@SuppressWarnings("unused")
 	private T thing;
 
 	@MockBean

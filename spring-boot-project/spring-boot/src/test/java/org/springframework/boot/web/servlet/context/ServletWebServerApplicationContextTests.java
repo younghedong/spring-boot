@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2022 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -84,6 +84,7 @@ import static org.mockito.BDDMockito.then;
 import static org.mockito.Mockito.atMost;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.withSettings;
 
 /**
@@ -95,7 +96,7 @@ import static org.mockito.Mockito.withSettings;
 @ExtendWith({ OutputCaptureExtension.class, MockitoExtension.class })
 class ServletWebServerApplicationContextTests {
 
-	private ServletWebServerApplicationContext context = new ServletWebServerApplicationContext();
+	private final ServletWebServerApplicationContext context = new ServletWebServerApplicationContext();
 
 	@Captor
 	private ArgumentCaptor<Filter> filterCaptor;
@@ -110,13 +111,13 @@ class ServletWebServerApplicationContextTests {
 		addWebServerFactoryBean();
 		this.context.refresh();
 		MockServletWebServerFactory factory = getWebServerFactory();
-		// Ensure that the context has been setup
+		// Ensure that the context has been set up
 		assertThat(this.context.getServletContext()).isEqualTo(factory.getServletContext());
 		then(factory.getServletContext()).should()
-				.setAttribute(WebApplicationContext.ROOT_WEB_APPLICATION_CONTEXT_ATTRIBUTE, this.context);
+			.setAttribute(WebApplicationContext.ROOT_WEB_APPLICATION_CONTEXT_ATTRIBUTE, this.context);
 		// Ensure WebApplicationContextUtils.registerWebApplicationScopes was called
 		assertThat(this.context.getBeanFactory().getRegisteredScope(WebApplicationContext.SCOPE_SESSION))
-				.isInstanceOf(SessionScope.class);
+			.isInstanceOf(SessionScope.class);
 		// Ensure WebApplicationContextUtils.registerEnvironmentBeans was called
 		assertThat(this.context.containsBean(WebApplicationContext.SERVLET_CONTEXT_BEAN_NAME)).isTrue();
 	}
@@ -124,7 +125,7 @@ class ServletWebServerApplicationContextTests {
 	@Test
 	void doesNotRegistersShutdownHook() {
 		// See gh-314 for background. We no longer register the shutdown hook
-		// since it is really the callers responsibility. The shutdown hook could
+		// since it is really the caller's responsibility. The shutdown hook could
 		// also be problematic in a classic WAR deployment.
 		addWebServerFactoryBean();
 		this.context.refresh();
@@ -137,10 +138,11 @@ class ServletWebServerApplicationContextTests {
 		this.context.registerBeanDefinition("listener", new RootBeanDefinition(TestApplicationListener.class));
 		this.context.refresh();
 		List<ApplicationEvent> events = this.context.getBean(TestApplicationListener.class).receivedEvents();
-		assertThat(events).hasSize(2).extracting("class").containsExactly(ServletWebServerInitializedEvent.class,
-				ContextRefreshedEvent.class);
+		assertThat(events).hasSize(2)
+			.extracting("class")
+			.containsExactly(ServletWebServerInitializedEvent.class, ContextRefreshedEvent.class);
 		ServletWebServerInitializedEvent initializedEvent = (ServletWebServerInitializedEvent) events.get(0);
-		assertThat(initializedEvent.getSource().getPort() >= 0).isTrue();
+		assertThat(initializedEvent.getSource().getPort()).isGreaterThanOrEqualTo(0);
 		assertThat(initializedEvent.getApplicationContext()).isEqualTo(this.context);
 	}
 
@@ -155,12 +157,35 @@ class ServletWebServerApplicationContextTests {
 	}
 
 	@Test
-	void stopOnClose() {
+	void stopOnStop() {
+		addWebServerFactoryBean();
+		this.context.refresh();
+		MockServletWebServerFactory factory = getWebServerFactory();
+		then(factory.getWebServer()).should().start();
+		this.context.stop();
+		then(factory.getWebServer()).should().stop();
+	}
+
+	@Test
+	void startOnStartAfterStop() {
+		addWebServerFactoryBean();
+		this.context.refresh();
+		MockServletWebServerFactory factory = getWebServerFactory();
+		then(factory.getWebServer()).should().start();
+		this.context.stop();
+		then(factory.getWebServer()).should().stop();
+		this.context.start();
+		then(factory.getWebServer()).should(times(2)).start();
+	}
+
+	@Test
+	void stopAndDestroyOnClose() {
 		addWebServerFactoryBean();
 		this.context.refresh();
 		MockServletWebServerFactory factory = getWebServerFactory();
 		this.context.close();
-		then(factory.getWebServer()).should().stop();
+		then(factory.getWebServer()).should(times(2)).stop();
+		then(factory.getWebServer()).should().destroy();
 	}
 
 	@Test
@@ -170,8 +195,9 @@ class ServletWebServerApplicationContextTests {
 		this.context.refresh();
 		this.context.addApplicationListener(listener);
 		this.context.close();
-		assertThat(listener.receivedEvents()).hasSize(2).extracting("class").contains(AvailabilityChangeEvent.class,
-				ContextClosedEvent.class);
+		assertThat(listener.receivedEvents()).hasSize(2)
+			.extracting("class")
+			.contains(AvailabilityChangeEvent.class, ContextClosedEvent.class);
 	}
 
 	@Test
@@ -189,7 +215,7 @@ class ServletWebServerApplicationContextTests {
 	void cannotSecondRefresh() {
 		addWebServerFactoryBean();
 		this.context.refresh();
-		assertThatIllegalStateException().isThrownBy(() -> this.context.refresh());
+		assertThatIllegalStateException().isThrownBy(this.context::refresh);
 	}
 
 	@Test
@@ -203,9 +229,10 @@ class ServletWebServerApplicationContextTests {
 
 	@Test
 	void missingServletWebServerFactory() {
-		assertThatExceptionOfType(ApplicationContextException.class).isThrownBy(() -> this.context.refresh())
-				.withMessageContaining("Unable to start ServletWebServerApplicationContext due to missing "
-						+ "ServletWebServerFactory bean");
+		assertThatExceptionOfType(ApplicationContextException.class).isThrownBy(this.context::refresh)
+			.havingRootCause()
+			.withMessageContaining("Unable to start ServletWebServerApplicationContext due to missing "
+					+ "ServletWebServerFactory bean");
 	}
 
 	@Test
@@ -213,9 +240,10 @@ class ServletWebServerApplicationContextTests {
 		addWebServerFactoryBean();
 		this.context.registerBeanDefinition("webServerFactory2",
 				new RootBeanDefinition(MockServletWebServerFactory.class));
-		assertThatExceptionOfType(ApplicationContextException.class).isThrownBy(() -> this.context.refresh())
-				.withMessageContaining("Unable to start ServletWebServerApplicationContext due to "
-						+ "multiple ServletWebServerFactory beans");
+		assertThatExceptionOfType(ApplicationContextException.class).isThrownBy(this.context::refresh)
+			.havingRootCause()
+			.withMessageContaining("Unable to start ServletWebServerApplicationContext due to "
+					+ "multiple ServletWebServerFactory beans");
 
 	}
 
@@ -236,13 +264,14 @@ class ServletWebServerApplicationContextTests {
 		OrderedFilter filter = new OrderedFilter();
 		this.context.registerBeanDefinition("filterBean", beanDefinition(filter));
 		FilterRegistrationBean<Filter> registration = new FilterRegistrationBean<>();
+		registration.setName("filterBeanRegistration");
 		registration.setFilter(mock(Filter.class));
 		registration.setOrder(100);
 		this.context.registerBeanDefinition("filterRegistrationBean", beanDefinition(registration));
 		this.context.refresh();
 		MockServletWebServerFactory factory = getWebServerFactory();
 		then(factory.getServletContext()).should().addFilter("filterBean", filter);
-		then(factory.getServletContext()).should().addFilter("object", registration.getFilter());
+		then(factory.getServletContext()).should().addFilter("filterBeanRegistration", registration.getFilter());
 		assertThat(factory.getRegisteredFilter(0).getFilter()).isEqualTo(filter);
 	}
 
@@ -304,9 +333,9 @@ class ServletWebServerApplicationContextTests {
 		then(factory.getServletContext()).should(ordered).addFilter("filterBean1", filter1);
 		then(factory.getServletContext()).should(ordered).addFilter("filterBean2", filter2);
 		then(factory.getRegisteredFilter(0).getRegistration()).should()
-				.addMappingForUrlPatterns(EnumSet.of(DispatcherType.REQUEST), false, "/*");
+			.addMappingForUrlPatterns(EnumSet.of(DispatcherType.REQUEST), false, "/*");
 		then(factory.getRegisteredFilter(1).getRegistration()).should()
-				.addMappingForUrlPatterns(EnumSet.of(DispatcherType.REQUEST), false, "/*");
+			.addMappingForUrlPatterns(EnumSet.of(DispatcherType.REQUEST), false, "/*");
 	}
 
 	@Test
@@ -408,8 +437,8 @@ class ServletWebServerApplicationContextTests {
 		// the delegate proxy will trigger creation and an exception
 		assertThatExceptionOfType(BeanCreationException.class).isThrownBy(() -> {
 			this.filterCaptor.getValue().init(new MockFilterConfig());
-			this.filterCaptor.getValue().doFilter(new MockHttpServletRequest(), new MockHttpServletResponse(),
-					new MockFilterChain());
+			this.filterCaptor.getValue()
+				.doFilter(new MockHttpServletRequest(), new MockHttpServletResponse(), new MockFilterChain());
 		}).withMessageContaining("Create FilterBean Failure");
 	}
 
@@ -463,7 +492,7 @@ class ServletWebServerApplicationContextTests {
 		addWebServerFactoryBean();
 		this.context.refresh();
 		assertThat(this.context.getBeanFactory().getRegisteredScope(WebApplicationContext.SCOPE_APPLICATION))
-				.isNotNull();
+			.isNotNull();
 	}
 
 	private void addWebServerFactoryBean() {
@@ -486,15 +515,15 @@ class ServletWebServerApplicationContextTests {
 	}
 
 	static <T> T getBean(T object) {
-		if (object instanceof RuntimeException) {
-			throw (RuntimeException) object;
+		if (object instanceof RuntimeException runtimeException) {
+			throw runtimeException;
 		}
 		return object;
 	}
 
 	static class TestApplicationListener implements ApplicationListener<ApplicationEvent> {
 
-		private Deque<ApplicationEvent> events = new ArrayDeque<>();
+		private final Deque<ApplicationEvent> events = new ArrayDeque<>();
 
 		@Override
 		public void onApplicationEvent(ApplicationEvent event) {

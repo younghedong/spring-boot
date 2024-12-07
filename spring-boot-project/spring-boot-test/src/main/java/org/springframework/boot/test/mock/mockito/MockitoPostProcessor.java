@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2022 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -57,6 +57,8 @@ import org.springframework.core.Conventions;
 import org.springframework.core.Ordered;
 import org.springframework.core.PriorityOrdered;
 import org.springframework.core.ResolvableType;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.test.context.junit4.SpringRunner;
 import org.springframework.util.Assert;
 import org.springframework.util.ClassUtils;
@@ -76,14 +78,18 @@ import org.springframework.util.StringUtils;
  * @author Stephane Nicoll
  * @author Andreas Neiser
  * @since 1.4.0
+ * @deprecated since 3.4.0 for removal in 3.6.0 in favor of Spring Framework's
+ * {@link MockitoBean} and {@link MockitoSpyBean} support
  */
+@SuppressWarnings("removal")
+@Deprecated(since = "3.4.0")
 public class MockitoPostProcessor implements InstantiationAwareBeanPostProcessor, BeanClassLoaderAware,
 		BeanFactoryAware, BeanFactoryPostProcessor, Ordered {
 
 	private static final String BEAN_NAME = MockitoPostProcessor.class.getName();
 
 	private static final String CONFIGURATION_CLASS_ATTRIBUTE = Conventions
-			.getQualifiedAttributeName(ConfigurationClassPostProcessor.class, "configurationClass");
+		.getQualifiedAttributeName(ConfigurationClassPostProcessor.class, "configurationClass");
 
 	private static final BeanNameGenerator beanNameGenerator = new DefaultBeanNameGenerator();
 
@@ -95,11 +101,11 @@ public class MockitoPostProcessor implements InstantiationAwareBeanPostProcessor
 
 	private final MockitoBeans mockitoBeans = new MockitoBeans();
 
-	private Map<Definition, String> beanNameRegistry = new HashMap<>();
+	private final Map<Definition, String> beanNameRegistry = new HashMap<>();
 
-	private Map<Field, String> fieldRegistry = new HashMap<>();
+	private final Map<Field, String> fieldRegistry = new HashMap<>();
 
-	private Map<String, SpyDefinition> spies = new HashMap<>();
+	private final Map<String, SpyDefinition> spies = new HashMap<>();
 
 	/**
 	 * Create a new {@link MockitoPostProcessor} instance with the given initial
@@ -163,11 +169,11 @@ public class MockitoPostProcessor implements InstantiationAwareBeanPostProcessor
 
 	private void register(ConfigurableListableBeanFactory beanFactory, BeanDefinitionRegistry registry,
 			Definition definition, Field field) {
-		if (definition instanceof MockDefinition) {
-			registerMock(beanFactory, registry, (MockDefinition) definition, field);
+		if (definition instanceof MockDefinition mockDefinition) {
+			registerMock(beanFactory, registry, mockDefinition, field);
 		}
-		else if (definition instanceof SpyDefinition) {
-			registerSpy(beanFactory, registry, (SpyDefinition) definition, field);
+		else if (definition instanceof SpyDefinition spyDefinition) {
+			registerSpy(beanFactory, registry, spyDefinition, field);
 		}
 	}
 
@@ -248,13 +254,14 @@ public class MockitoPostProcessor implements InstantiationAwareBeanPostProcessor
 		return candidates;
 	}
 
-	private Set<String> getExistingBeans(ConfigurableListableBeanFactory beanFactory, ResolvableType type) {
-		Set<String> beans = new LinkedHashSet<>(Arrays.asList(beanFactory.getBeanNamesForType(type, true, false)));
-		String typeName = type.resolve(Object.class).getName();
+	private Set<String> getExistingBeans(ConfigurableListableBeanFactory beanFactory, ResolvableType resolvableType) {
+		Set<String> beans = new LinkedHashSet<>(
+				Arrays.asList(beanFactory.getBeanNamesForType(resolvableType, true, false)));
+		Class<?> type = resolvableType.resolve(Object.class);
 		for (String beanName : beanFactory.getBeanNamesForType(FactoryBean.class, true, false)) {
 			beanName = BeanFactoryUtils.transformedBeanName(beanName);
-			BeanDefinition beanDefinition = beanFactory.getBeanDefinition(beanName);
-			if (typeName.equals(beanDefinition.getAttribute(FactoryBean.OBJECT_TYPE_ATTRIBUTE))) {
+			Class<?> producedType = beanFactory.getType(beanName, false);
+			if (type.equals(producedType)) {
 				beans.add(beanName);
 			}
 		}
@@ -329,6 +336,7 @@ public class MockitoPostProcessor implements InstantiationAwareBeanPostProcessor
 		SpyDefinition definition = this.spies.get(beanName);
 		if (definition != null) {
 			bean = definition.createSpy(beanName, bean);
+			this.mockitoBeans.add(bean);
 		}
 		return bean;
 	}
@@ -419,7 +427,7 @@ public class MockitoPostProcessor implements InstantiationAwareBeanPostProcessor
 			RootBeanDefinition definition = new RootBeanDefinition(postProcessor);
 			definition.setRole(BeanDefinition.ROLE_INFRASTRUCTURE);
 			ConstructorArgumentValues constructorArguments = definition.getConstructorArgumentValues();
-			constructorArguments.addIndexedArgumentValue(0, new LinkedHashSet<MockDefinition>());
+			constructorArguments.addIndexedArgumentValue(0, new LinkedHashSet<>());
 			registry.registerBeanDefinition(BEAN_NAME, definition);
 			return definition;
 		}

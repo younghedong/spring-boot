@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2019 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,7 +18,6 @@ package org.springframework.boot.actuate.endpoint.jmx;
 
 import java.util.Collection;
 import java.util.Collections;
-import java.util.stream.Collectors;
 
 import javax.management.InstanceNotFoundException;
 import javax.management.MBeanRegistrationException;
@@ -35,6 +34,7 @@ import org.springframework.beans.factory.InitializingBean;
 import org.springframework.jmx.JmxException;
 import org.springframework.jmx.export.MBeanExportException;
 import org.springframework.util.Assert;
+import org.springframework.util.CollectionUtils;
 
 /**
  * Exports {@link ExposableJmxEndpoint JMX endpoints} to a {@link MBeanServer}.
@@ -87,7 +87,11 @@ public class JmxEndpointExporter implements InitializingBean, DisposableBean, Be
 	}
 
 	private Collection<ObjectName> register() {
-		return this.endpoints.stream().map(this::register).collect(Collectors.toList());
+		return this.endpoints.stream().filter(this::hasOperations).map(this::register).toList();
+	}
+
+	private boolean hasOperations(ExposableJmxEndpoint endpoint) {
+		return !CollectionUtils.isEmpty(endpoint.getOperations());
 	}
 
 	private ObjectName register(ExposableJmxEndpoint endpoint) {

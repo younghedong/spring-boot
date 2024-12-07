@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2021 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,6 +20,7 @@ import java.util.Arrays;
 
 import org.junit.jupiter.api.Test;
 
+import org.springframework.boot.actuate.endpoint.Access;
 import org.springframework.boot.actuate.endpoint.EndpointId;
 import org.springframework.boot.actuate.endpoint.web.EndpointMapping;
 import org.springframework.boot.actuate.endpoint.web.annotation.ControllerEndpoint;
@@ -42,7 +43,10 @@ import static org.mockito.Mockito.mock;
  *
  * @author Phillip Webb
  * @author Stephane Nicoll
+ * @deprecated since 3.3.5 in favor of {@code @Endpoint} and {@code @WebEndpoint} support
  */
+@Deprecated(since = "3.3.5", forRemoval = true)
+@SuppressWarnings("removal")
 class ControllerEndpointHandlerMappingTests {
 
 	private final StaticApplicationContext context = new StaticApplicationContext();
@@ -53,9 +57,9 @@ class ControllerEndpointHandlerMappingTests {
 		ExposableControllerEndpoint second = secondEndpoint();
 		ControllerEndpointHandlerMapping mapping = createMapping("", first, second);
 		assertThat(mapping.getHandler(request("GET", "/first")).getHandler())
-				.isEqualTo(handlerOf(first.getController(), "get"));
+			.isEqualTo(handlerOf(first.getController(), "get"));
 		assertThat(mapping.getHandler(request("POST", "/second")).getHandler())
-				.isEqualTo(handlerOf(second.getController(), "save"));
+			.isEqualTo(handlerOf(second.getController(), "save"));
 		assertThat(mapping.getHandler(request("GET", "/third"))).isNull();
 	}
 
@@ -65,9 +69,9 @@ class ControllerEndpointHandlerMappingTests {
 		ExposableControllerEndpoint second = secondEndpoint();
 		ControllerEndpointHandlerMapping mapping = createMapping("actuator", first, second);
 		assertThat(mapping.getHandler(request("GET", "/actuator/first")).getHandler())
-				.isEqualTo(handlerOf(first.getController(), "get"));
+			.isEqualTo(handlerOf(first.getController(), "get"));
 		assertThat(mapping.getHandler(request("POST", "/actuator/second")).getHandler())
-				.isEqualTo(handlerOf(second.getController(), "save"));
+			.isEqualTo(handlerOf(second.getController(), "save"));
 		assertThat(mapping.getHandler(request("GET", "/first"))).isNull();
 		assertThat(mapping.getHandler(request("GET", "/second"))).isNull();
 	}
@@ -77,7 +81,7 @@ class ControllerEndpointHandlerMappingTests {
 		ExposableControllerEndpoint first = firstEndpoint();
 		ControllerEndpointHandlerMapping mapping = createMapping("actuator", first);
 		assertThatExceptionOfType(HttpRequestMethodNotSupportedException.class)
-				.isThrownBy(() -> mapping.getHandler(request("POST", "/actuator/first")));
+			.isThrownBy(() -> mapping.getHandler(request("POST", "/actuator/first")));
 	}
 
 	@Test
@@ -85,14 +89,14 @@ class ControllerEndpointHandlerMappingTests {
 		ExposableControllerEndpoint pathless = pathlessEndpoint();
 		ControllerEndpointHandlerMapping mapping = createMapping("actuator", pathless);
 		assertThat(mapping.getHandler(request("GET", "/actuator/pathless")).getHandler())
-				.isEqualTo(handlerOf(pathless.getController(), "get"));
+			.isEqualTo(handlerOf(pathless.getController(), "get"));
 		assertThat(mapping.getHandler(request("GET", "/pathless"))).isNull();
 		assertThat(mapping.getHandler(request("GET", "/"))).isNull();
 	}
 
 	private ControllerEndpointHandlerMapping createMapping(String prefix, ExposableControllerEndpoint... endpoints) {
 		ControllerEndpointHandlerMapping mapping = new ControllerEndpointHandlerMapping(new EndpointMapping(prefix),
-				Arrays.asList(endpoints), null);
+				Arrays.asList(endpoints), null, (endpointId, defaultAccess) -> Access.UNRESTRICTED);
 		mapping.setApplicationContext(this.context);
 		mapping.afterPropertiesSet();
 		return mapping;

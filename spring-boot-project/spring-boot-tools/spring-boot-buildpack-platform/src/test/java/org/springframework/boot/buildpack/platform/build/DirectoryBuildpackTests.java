@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2022 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -90,9 +90,9 @@ class DirectoryBuildpackTests {
 		Files.createDirectories(this.buildpackDir.toPath());
 		BuildpackReference reference = BuildpackReference.of(this.buildpackDir.toString());
 		assertThatIllegalArgumentException()
-				.isThrownBy(() -> DirectoryBuildpack.resolve(this.resolverContext, reference))
-				.withMessageContaining("Buildpack descriptor 'buildpack.toml' is required")
-				.withMessageContaining(this.buildpackDir.getAbsolutePath());
+			.isThrownBy(() -> DirectoryBuildpack.resolve(this.resolverContext, reference))
+			.withMessageContaining("Buildpack descriptor 'buildpack.toml' is required")
+			.withMessageContaining(this.buildpackDir.getAbsolutePath());
 	}
 
 	@Test
@@ -128,18 +128,19 @@ class DirectoryBuildpackTests {
 		byte[] content = layers.get(0).toByteArray();
 		try (TarArchiveInputStream tar = new TarArchiveInputStream(new ByteArrayInputStream(content))) {
 			List<TarArchiveEntry> entries = new ArrayList<>();
-			TarArchiveEntry entry = tar.getNextTarEntry();
+			TarArchiveEntry entry = tar.getNextEntry();
 			while (entry != null) {
 				entries.add(entry);
-				entry = tar.getNextTarEntry();
+				entry = tar.getNextEntry();
 			}
-			assertThat(entries).extracting("name", "mode").containsExactlyInAnyOrder(tuple("/cnb/", 0755),
-					tuple("/cnb/buildpacks/", 0755), tuple("/cnb/buildpacks/example_buildpack1/", 0755),
-					tuple("/cnb/buildpacks/example_buildpack1/0.0.1/", 0755),
-					tuple("/cnb/buildpacks/example_buildpack1/0.0.1/buildpack.toml", 0644),
-					tuple("/cnb/buildpacks/example_buildpack1/0.0.1/bin/", 0755),
-					tuple("/cnb/buildpacks/example_buildpack1/0.0.1/bin/detect", 0744),
-					tuple("/cnb/buildpacks/example_buildpack1/0.0.1/bin/build", 0744));
+			assertThat(entries).extracting("name", "mode")
+				.containsExactlyInAnyOrder(tuple("/cnb/", 0755), tuple("/cnb/buildpacks/", 0755),
+						tuple("/cnb/buildpacks/example_buildpack1/", 0755),
+						tuple("/cnb/buildpacks/example_buildpack1/0.0.1/", 0755),
+						tuple("/cnb/buildpacks/example_buildpack1/0.0.1/buildpack.toml", 0644),
+						tuple("/cnb/buildpacks/example_buildpack1/0.0.1/bin/", 0755),
+						tuple("/cnb/buildpacks/example_buildpack1/0.0.1/bin/detect", 0744),
+						tuple("/cnb/buildpacks/example_buildpack1/0.0.1/bin/build", 0744));
 		}
 	}
 

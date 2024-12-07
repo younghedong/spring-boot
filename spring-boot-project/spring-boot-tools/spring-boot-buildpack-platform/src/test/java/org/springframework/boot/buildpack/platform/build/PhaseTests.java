@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2022 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -66,7 +66,7 @@ class PhaseTests {
 		Update update = mock(Update.class);
 		phase.apply(update);
 		then(update).should().withUser("root");
-		then(update).should().withCommand("/cnb/lifecycle/test", NO_ARGS);
+		then(update).should().withCommand("/cnb/lifecycle/test", "-daemon");
 		then(update).should().withLabel("author", "spring-boot");
 		then(update).shouldHaveNoMoreInteractions();
 	}
@@ -74,7 +74,6 @@ class PhaseTests {
 	@Test
 	void applyWhenWithLogLevelArgAndVerboseLoggingUpdatesConfigurationWithLogLevel() {
 		Phase phase = new Phase("test", true);
-		phase.withLogLevelArg();
 		Update update = mock(Update.class);
 		phase.apply(update);
 		then(update).should().withCommand("/cnb/lifecycle/test", "-log-level", "debug");
@@ -85,7 +84,6 @@ class PhaseTests {
 	@Test
 	void applyWhenWithLogLevelArgAndNonVerboseLoggingDoesNotUpdateLogLevel() {
 		Phase phase = new Phase("test", false);
-		phase.withLogLevelArg();
 		Update update = mock(Update.class);
 		phase.apply(update);
 		then(update).should().withCommand("/cnb/lifecycle/test");
@@ -133,13 +131,27 @@ class PhaseTests {
 
 	@Test
 	void applyWhenWithNetworkModeUpdatesConfigurationWithNetworkMode() {
-		Phase phase = new Phase("test", true);
+		Phase phase = new Phase("test", false);
 		phase.withNetworkMode("test");
 		Update update = mock(Update.class);
 		phase.apply(update);
 		then(update).should().withCommand("/cnb/lifecycle/test");
 		then(update).should().withNetworkMode("test");
 		then(update).should().withLabel("author", "spring-boot");
+		then(update).shouldHaveNoMoreInteractions();
+	}
+
+	@Test
+	void applyWhenWithSecurityOptionsUpdatesConfigurationWithSecurityOptions() {
+		Phase phase = new Phase("test", false);
+		phase.withSecurityOption("option1=value1");
+		phase.withSecurityOption("option2=value2");
+		Update update = mock(Update.class);
+		phase.apply(update);
+		then(update).should().withCommand("/cnb/lifecycle/test");
+		then(update).should().withLabel("author", "spring-boot");
+		then(update).should().withSecurityOption("option1=value1");
+		then(update).should().withSecurityOption("option2=value2");
 		then(update).shouldHaveNoMoreInteractions();
 	}
 

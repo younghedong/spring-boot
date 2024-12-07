@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2022 the original author or authors.
+ * Copyright 2012-2023 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -150,7 +150,7 @@ public class IncludeExcludeEndpointFilter<E extends ExposableEndpoint<?>> implem
 		private final Set<EndpointId> endpointIds;
 
 		EndpointPatterns(String[] patterns) {
-			this((patterns != null) ? Arrays.asList(patterns) : (Collection<String>) null);
+			this((patterns != null) ? Arrays.asList(patterns) : null);
 		}
 
 		EndpointPatterns(Collection<String> patterns) {

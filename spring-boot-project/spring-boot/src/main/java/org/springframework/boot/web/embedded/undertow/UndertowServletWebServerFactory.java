@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2022 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,6 +20,7 @@ import java.io.File;
 import java.io.IOException;
 import java.net.URL;
 import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -84,6 +85,7 @@ import org.springframework.util.CollectionUtils;
  * @author Andy Wilkinson
  * @author Marcos Barbero
  * @author Eddú Meléndez
+ * @author Scott Frederick
  * @since 2.0.0
  * @see UndertowServletWebServer
  */
@@ -94,7 +96,7 @@ public class UndertowServletWebServerFactory extends AbstractServletWebServerFac
 
 	private static final Set<Class<?>> NO_CLASSES = Collections.emptySet();
 
-	private UndertowWebServerFactoryDelegate delegate = new UndertowWebServerFactoryDelegate();
+	private final UndertowWebServerFactoryDelegate delegate = new UndertowWebServerFactoryDelegate();
 
 	private Set<UndertowDeploymentInfoCustomizer> deploymentInfoCustomizers = new LinkedHashSet<>();
 
@@ -294,7 +296,7 @@ public class UndertowServletWebServerFactory extends AbstractServletWebServerFac
 
 	@Override
 	public WebServer getWebServer(ServletContextInitializer... initializers) {
-		Builder builder = this.delegate.createBuilder(this);
+		Builder builder = this.delegate.createBuilder(this, this::getSslBundle, this::getServerNameSslBundles);
 		DeploymentManager manager = createManager(initializers);
 		return getUndertowWebServer(builder, manager, getPort());
 	}
@@ -327,8 +329,8 @@ public class UndertowServletWebServerFactory extends AbstractServletWebServerFac
 		addLocaleMappings(deployment);
 		DeploymentManager manager = Servlets.newContainer().addDeployment(deployment);
 		manager.deploy();
-		if (manager.getDeployment() instanceof DeploymentImpl) {
-			removeSuperfluousMimeMappings((DeploymentImpl) manager.getDeployment(), deployment);
+		if (manager.getDeployment() instanceof DeploymentImpl managerDeployment) {
+			removeSuperfluousMimeMappings(managerDeployment, deployment);
 		}
 		SessionManager sessionManager = manager.getDeployment().getSessionManager();
 		Duration timeoutDuration = getSession().getTimeout();
@@ -358,8 +360,8 @@ public class UndertowServletWebServerFactory extends AbstractServletWebServerFac
 	}
 
 	private void addLocaleMappings(DeploymentInfo deployment) {
-		getLocaleCharsetMappings().forEach(
-				(locale, charset) -> deployment.addLocaleCharsetMapping(locale.toString(), charset.toString()));
+		getLocaleCharsetMappings()
+			.forEach((locale, charset) -> deployment.addLocaleCharsetMapping(locale.toString(), charset.toString()));
 	}
 
 	private void registerServletContainerInitializerToDriveServletContextInitializers(DeploymentInfo deployment,
@@ -367,7 +369,7 @@ public class UndertowServletWebServerFactory extends AbstractServletWebServerFac
 		ServletContextInitializer[] mergedInitializers = mergeInitializers(initializers);
 		Initializer initializer = new Initializer(mergedInitializers);
 		deployment.addServletContainerInitializer(new ServletContainerInitializerInfo(Initializer.class,
-				new ImmediateInstanceFactory<ServletContainerInitializer>(initializer), NO_CLASSES));
+				new ImmediateInstanceFactory<>(initializer), NO_CLASSES));
 	}
 
 	private ClassLoader getServletClassLoader() {
@@ -553,7 +555,7 @@ public class UndertowServletWebServerFactory extends AbstractServletWebServerFac
 
 		private URLResource getMetaInfResource(URL resourceJar, String path) {
 			try {
-				String urlPath = URLEncoder.encode(ENCODED_SLASH.matcher(path).replaceAll("/"), "UTF-8");
+				String urlPath = URLEncoder.encode(ENCODED_SLASH.matcher(path).replaceAll("/"), StandardCharsets.UTF_8);
 				URL resourceUrl = new URL(resourceJar + "META-INF/resources" + urlPath);
 				URLResource resource = new URLResource(resourceUrl, path);
 				if (resource.getContentLength() < 0) {
@@ -639,6 +641,7 @@ public class UndertowServletWebServerFactory extends AbstractServletWebServerFac
 			}
 		}
 
+		@SuppressWarnings("removal")
 		private jakarta.servlet.http.Cookie asServletCookie(Cookie cookie) {
 			PropertyMapper map = PropertyMapper.get().alwaysApplyingWhenNonNull();
 			jakarta.servlet.http.Cookie result = new jakarta.servlet.http.Cookie(cookie.getName(), cookie.getValue());

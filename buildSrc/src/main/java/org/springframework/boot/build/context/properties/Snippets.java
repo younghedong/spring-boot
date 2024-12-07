@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2022 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -52,8 +52,10 @@ class Snippets {
 
 	void writeTo(Path outputDirectory) throws IOException {
 		createDirectory(outputDirectory);
-		Set<String> remaining = this.properties.stream().filter((property) -> !property.isDeprecated())
-				.map(ConfigurationProperty::getName).collect(Collectors.toSet());
+		Set<String> remaining = this.properties.stream()
+			.filter((property) -> !property.isDeprecated())
+			.map(ConfigurationProperty::getName)
+			.collect(Collectors.toSet());
 		for (Snippet snippet : this.snippets) {
 			Set<String> written = writeSnippet(outputDirectory, snippet, remaining);
 			remaining.removeAll(written);
@@ -100,11 +102,7 @@ class Snippets {
 
 	private void writeAsciidoc(Path outputDirectory, Snippet snippet, Asciidoc asciidoc) throws IOException {
 		String[] parts = (snippet.getAnchor()).split("\\.");
-		Path path = outputDirectory;
-		for (int i = 0; i < parts.length; i++) {
-			String name = (i < parts.length - 1) ? parts[i] : parts[i] + ".adoc";
-			path = path.resolve(name);
-		}
+		Path path = outputDirectory.resolve(parts[parts.length - 1] + ".adoc");
 		createDirectory(path.getParent());
 		Files.deleteIfExists(path);
 		try (OutputStream outputStream = Files.newOutputStream(path)) {

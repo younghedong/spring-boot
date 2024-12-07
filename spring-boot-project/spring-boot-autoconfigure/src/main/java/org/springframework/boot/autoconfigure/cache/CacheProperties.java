@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2021 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -41,14 +41,16 @@ public class CacheProperties {
 	private CacheType type;
 
 	/**
-	 * Comma-separated list of cache names to create if supported by the underlying cache
-	 * manager. Usually, this disables the ability to create additional caches on-the-fly.
+	 * List of cache names to create if supported by the underlying cache manager.
+	 * Usually, this disables the ability to create additional caches on-the-fly.
 	 */
 	private List<String> cacheNames = new ArrayList<>();
 
 	private final Caffeine caffeine = new Caffeine();
 
 	private final Couchbase couchbase = new Couchbase();
+
+	private final Infinispan infinispan = new Infinispan();
 
 	private final JCache jcache = new JCache();
 
@@ -76,6 +78,10 @@ public class CacheProperties {
 
 	public Couchbase getCouchbase() {
 		return this.couchbase;
+	}
+
+	public Infinispan getInfinispan() {
+		return this.infinispan;
 	}
 
 	public JCache getJcache() {
@@ -140,6 +146,26 @@ public class CacheProperties {
 
 		public void setExpiration(Duration expiration) {
 			this.expiration = expiration;
+		}
+
+	}
+
+	/**
+	 * Infinispan specific cache properties.
+	 */
+	public static class Infinispan {
+
+		/**
+		 * The location of the configuration file to use to initialize Infinispan.
+		 */
+		private Resource config;
+
+		public Resource getConfig() {
+			return this.config;
+		}
+
+		public void setConfig(Resource config) {
+			this.config = config;
 		}
 
 	}

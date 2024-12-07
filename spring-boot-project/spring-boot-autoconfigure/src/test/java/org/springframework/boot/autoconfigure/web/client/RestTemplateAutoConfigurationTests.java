@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2022 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,9 +21,11 @@ import java.util.List;
 
 import org.junit.jupiter.api.Test;
 
+import org.springframework.beans.factory.support.BeanDefinitionOverrideException;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.autoconfigure.http.HttpMessageConverters;
 import org.springframework.boot.autoconfigure.http.HttpMessageConvertersAutoConfiguration;
+import org.springframework.boot.autoconfigure.http.client.HttpClientAutoConfiguration;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.boot.test.context.runner.ReactiveWebApplicationContextRunner;
 import org.springframework.boot.test.context.runner.WebApplicationContextRunner;
@@ -35,6 +37,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.client.ClientHttpRequestFactory;
 import org.springframework.http.client.HttpComponentsClientHttpRequestFactory;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.http.converter.HttpMessageConverter;
 import org.springframework.http.converter.StringHttpMessageConverter;
 import org.springframework.mock.http.client.MockClientHttpRequest;
@@ -55,34 +58,42 @@ import static org.mockito.Mockito.mock;
  */
 class RestTemplateAutoConfigurationTests {
 
-	private final ApplicationContextRunner contextRunner = new ApplicationContextRunner()
-			.withConfiguration(AutoConfigurations.of(RestTemplateAutoConfiguration.class));
+	private final ApplicationContextRunner contextRunner = new ApplicationContextRunner().withConfiguration(
+			AutoConfigurations.of(RestTemplateAutoConfiguration.class, HttpClientAutoConfiguration.class));
 
 	@Test
 	void restTemplateBuilderConfigurerShouldBeLazilyDefined() {
 		this.contextRunner.run((context) -> assertThat(
-				context.getBeanFactory().getBeanDefinition("restTemplateBuilderConfigurer").isLazyInit()).isTrue());
+				context.getBeanFactory().getBeanDefinition("restTemplateBuilderConfigurer").isLazyInit())
+			.isTrue());
+	}
+
+	@Test
+	void shouldFailOnCustomRestTemplateBuilderConfigurer() {
+		this.contextRunner.withUserConfiguration(RestTemplateBuilderConfigurerConfig.class)
+			.run((context) -> assertThat(context).getFailure()
+				.isInstanceOf(BeanDefinitionOverrideException.class)
+				.hasMessageContaining("with name 'restTemplateBuilderConfigurer'"));
 	}
 
 	@Test
 	void restTemplateBuilderShouldBeLazilyDefined() {
-		this.contextRunner.run(
-				(context) -> assertThat(context.getBeanFactory().getBeanDefinition("restTemplateBuilder").isLazyInit())
-						.isTrue());
+		this.contextRunner
+			.run((context) -> assertThat(context.getBeanFactory().getBeanDefinition("restTemplateBuilder").isLazyInit())
+				.isTrue());
 	}
 
 	@Test
 	void restTemplateWhenMessageConvertersDefinedShouldHaveMessageConverters() {
 		this.contextRunner.withConfiguration(AutoConfigurations.of(HttpMessageConvertersAutoConfiguration.class))
-				.withUserConfiguration(RestTemplateConfig.class).run((context) -> {
-					assertThat(context).hasSingleBean(RestTemplate.class);
-					RestTemplate restTemplate = context.getBean(RestTemplate.class);
-					List<HttpMessageConverter<?>> converters = context.getBean(HttpMessageConverters.class)
-							.getConverters();
-					assertThat(restTemplate.getMessageConverters()).containsExactlyElementsOf(converters);
-					assertThat(restTemplate.getRequestFactory())
-							.isInstanceOf(HttpComponentsClientHttpRequestFactory.class);
-				});
+			.withUserConfiguration(RestTemplateConfig.class)
+			.run((context) -> {
+				assertThat(context).hasSingleBean(RestTemplate.class);
+				RestTemplate restTemplate = context.getBean(RestTemplate.class);
+				List<HttpMessageConverter<?>> converters = context.getBean(HttpMessageConverters.class).getConverters();
+				assertThat(restTemplate.getMessageConverters()).containsExactlyElementsOf(converters);
+				assertThat(restTemplate.getRequestFactory()).isInstanceOf(HttpComponentsClientHttpRequestFactory.class);
+			});
 	}
 
 	@Test
@@ -90,8 +101,7 @@ class RestTemplateAutoConfigurationTests {
 		this.contextRunner.withUserConfiguration(RestTemplateConfig.class).run((context) -> {
 			assertThat(context).hasSingleBean(RestTemplate.class);
 			RestTemplate restTemplate = context.getBean(RestTemplate.class);
-			assertThat(restTemplate.getMessageConverters().size())
-					.isEqualTo(new RestTemplate().getMessageConverters().size());
+			assertThat(restTemplate.getMessageConverters()).hasSameSizeAs(new RestTemplate().getMessageConverters());
 		});
 	}
 
@@ -99,51 +109,53 @@ class RestTemplateAutoConfigurationTests {
 	@SuppressWarnings({ "unchecked", "rawtypes" })
 	void restTemplateWhenHasCustomMessageConvertersShouldHaveMessageConverters() {
 		this.contextRunner.withConfiguration(AutoConfigurations.of(HttpMessageConvertersAutoConfiguration.class))
-				.withUserConfiguration(CustomHttpMessageConverter.class, RestTemplateConfig.class).run((context) -> {
-					assertThat(context).hasSingleBean(RestTemplate.class);
-					RestTemplate restTemplate = context.getBean(RestTemplate.class);
-					assertThat(restTemplate.getMessageConverters()).extracting(HttpMessageConverter::getClass)
-							.contains((Class) CustomHttpMessageConverter.class);
-				});
+			.withUserConfiguration(CustomHttpMessageConverter.class, RestTemplateConfig.class)
+			.run((context) -> {
+				assertThat(context).hasSingleBean(RestTemplate.class);
+				RestTemplate restTemplate = context.getBean(RestTemplate.class);
+				assertThat(restTemplate.getMessageConverters()).extracting(HttpMessageConverter::getClass)
+					.contains((Class) CustomHttpMessageConverter.class);
+			});
 	}
 
 	@Test
 	void restTemplateShouldApplyCustomizer() {
 		this.contextRunner.withUserConfiguration(RestTemplateConfig.class, RestTemplateCustomizerConfig.class)
-				.run((context) -> {
-					assertThat(context).hasSingleBean(RestTemplate.class);
-					RestTemplate restTemplate = context.getBean(RestTemplate.class);
-					RestTemplateCustomizer customizer = context.getBean(RestTemplateCustomizer.class);
-					then(customizer).should().customize(restTemplate);
-				});
+			.run((context) -> {
+				assertThat(context).hasSingleBean(RestTemplate.class);
+				RestTemplate restTemplate = context.getBean(RestTemplate.class);
+				RestTemplateCustomizer customizer = context.getBean(RestTemplateCustomizer.class);
+				then(customizer).should().customize(restTemplate);
+			});
 	}
 
 	@Test
 	void restTemplateWhenHasCustomBuilderShouldUseCustomBuilder() {
-		this.contextRunner.withUserConfiguration(RestTemplateConfig.class, CustomRestTemplateBuilderConfig.class,
-				RestTemplateCustomizerConfig.class).run((context) -> {
-					assertThat(context).hasSingleBean(RestTemplate.class);
-					RestTemplate restTemplate = context.getBean(RestTemplate.class);
-					assertThat(restTemplate.getMessageConverters()).hasSize(1);
-					assertThat(restTemplate.getMessageConverters().get(0))
-							.isInstanceOf(CustomHttpMessageConverter.class);
-					then(context.getBean(RestTemplateCustomizer.class)).shouldHaveNoInteractions();
-				});
+		this.contextRunner
+			.withUserConfiguration(RestTemplateConfig.class, CustomRestTemplateBuilderConfig.class,
+					RestTemplateCustomizerConfig.class)
+			.run((context) -> {
+				assertThat(context).hasSingleBean(RestTemplate.class);
+				RestTemplate restTemplate = context.getBean(RestTemplate.class);
+				assertThat(restTemplate.getMessageConverters()).hasSize(1);
+				assertThat(restTemplate.getMessageConverters().get(0)).isInstanceOf(CustomHttpMessageConverter.class);
+				then(context.getBean(RestTemplateCustomizer.class)).shouldHaveNoInteractions();
+			});
 	}
 
 	@Test
 	void restTemplateWhenHasCustomBuilderCouldReuseBuilderConfigurer() {
-		this.contextRunner.withUserConfiguration(RestTemplateConfig.class,
-				CustomRestTemplateBuilderWithConfigurerConfig.class, RestTemplateCustomizerConfig.class)
-				.run((context) -> {
-					assertThat(context).hasSingleBean(RestTemplate.class);
-					RestTemplate restTemplate = context.getBean(RestTemplate.class);
-					assertThat(restTemplate.getMessageConverters()).hasSize(1);
-					assertThat(restTemplate.getMessageConverters().get(0))
-							.isInstanceOf(CustomHttpMessageConverter.class);
-					RestTemplateCustomizer customizer = context.getBean(RestTemplateCustomizer.class);
-					then(customizer).should().customize(restTemplate);
-				});
+		this.contextRunner
+			.withUserConfiguration(RestTemplateConfig.class, CustomRestTemplateBuilderWithConfigurerConfig.class,
+					RestTemplateCustomizerConfig.class)
+			.run((context) -> {
+				assertThat(context).hasSingleBean(RestTemplate.class);
+				RestTemplate restTemplate = context.getBean(RestTemplate.class);
+				assertThat(restTemplate.getMessageConverters()).hasSize(1);
+				assertThat(restTemplate.getMessageConverters().get(0)).isInstanceOf(CustomHttpMessageConverter.class);
+				RestTemplateCustomizer customizer = context.getBean(RestTemplateCustomizer.class);
+				then(customizer).should().customize(restTemplate);
+			});
 	}
 
 	@Test
@@ -163,22 +175,34 @@ class RestTemplateAutoConfigurationTests {
 	@Test
 	void builderShouldBeFreshForEachUse() {
 		this.contextRunner.withUserConfiguration(DirtyRestTemplateConfig.class)
-				.run((context) -> assertThat(context).hasNotFailed());
+			.run((context) -> assertThat(context).hasNotFailed());
 	}
 
 	@Test
 	void whenServletWebApplicationRestTemplateBuilderIsConfigured() {
 		new WebApplicationContextRunner().withConfiguration(AutoConfigurations.of(RestTemplateAutoConfiguration.class))
-				.run((context) -> assertThat(context).hasSingleBean(RestTemplateBuilder.class)
-						.hasSingleBean(RestTemplateBuilderConfigurer.class));
+			.run((context) -> assertThat(context).hasSingleBean(RestTemplateBuilder.class)
+				.hasSingleBean(RestTemplateBuilderConfigurer.class));
 	}
 
 	@Test
 	void whenReactiveWebApplicationRestTemplateBuilderIsNotConfigured() {
 		new ReactiveWebApplicationContextRunner()
-				.withConfiguration(AutoConfigurations.of(RestTemplateAutoConfiguration.class))
-				.run((context) -> assertThat(context).doesNotHaveBean(RestTemplateBuilder.class)
-						.doesNotHaveBean(RestTemplateBuilderConfigurer.class));
+			.withConfiguration(AutoConfigurations.of(RestTemplateAutoConfiguration.class))
+			.run((context) -> assertThat(context).doesNotHaveBean(RestTemplateBuilder.class)
+				.doesNotHaveBean(RestTemplateBuilderConfigurer.class));
+	}
+
+	@Test
+	void whenHasFactoryProperty() {
+		this.contextRunner.withConfiguration(AutoConfigurations.of(HttpMessageConvertersAutoConfiguration.class))
+			.withUserConfiguration(RestTemplateConfig.class)
+			.withPropertyValues("spring.http.client.factory=simple")
+			.run((context) -> {
+				assertThat(context).hasSingleBean(RestTemplate.class);
+				RestTemplate restTemplate = context.getBean(RestTemplate.class);
+				assertThat(restTemplate.getRequestFactory()).isInstanceOf(SimpleClientHttpRequestFactory.class);
+			});
 	}
 
 	@Configuration(proxyBeanMethods = false)
@@ -258,6 +282,16 @@ class RestTemplateAutoConfigurationTests {
 		@Bean
 		RestTemplateRequestCustomizer<?> restTemplateRequestCustomizer() {
 			return (request) -> request.getHeaders().add("spring", "boot");
+		}
+
+	}
+
+	@Configuration(proxyBeanMethods = false)
+	static class RestTemplateBuilderConfigurerConfig {
+
+		@Bean
+		RestTemplateBuilderConfigurer restTemplateBuilderConfigurer() {
+			return new RestTemplateBuilderConfigurer();
 		}
 
 	}

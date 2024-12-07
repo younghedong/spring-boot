@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2022 the original author or authors.
+ * Copyright 2012-2023 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -43,6 +43,7 @@ import org.osjava.sj.loader.JndiLoader;
 
 import org.springframework.beans.factory.NoSuchBeanDefinitionException;
 import org.springframework.boot.test.util.TestPropertyValues;
+import org.springframework.boot.testsupport.classpath.ClassPathExclusions;
 import org.springframework.context.annotation.AnnotationConfigApplicationContext;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -62,6 +63,7 @@ import static org.mockito.Mockito.mock;
  * @author Kazuki Shimizu
  * @author Nishant Raut
  */
+@ClassPathExclusions("jetty-jndi-*.jar")
 class JtaAutoConfigurationTests {
 
 	private AnnotationConfigApplicationContext context;
@@ -103,7 +105,7 @@ class JtaAutoConfigurationTests {
 		this.context = new AnnotationConfigApplicationContext(CustomTransactionManagerConfig.class,
 				JtaAutoConfiguration.class);
 		assertThatExceptionOfType(NoSuchBeanDefinitionException.class)
-				.isThrownBy(() -> this.context.getBean(JtaTransactionManager.class));
+			.isThrownBy(() -> this.context.getBean(JtaTransactionManager.class));
 	}
 
 	@Test
@@ -165,8 +167,8 @@ class JtaAutoConfigurationTests {
 		@Override
 		public void beforeEach(ExtensionContext context) throws Exception {
 			Namespace namespace = Namespace.create(getClass(), context.getUniqueId());
-			context.getStore(namespace).getOrComputeIfAbsent(InitialContext.class, (k) -> createInitialContext(),
-					InitialContext.class);
+			context.getStore(namespace)
+				.getOrComputeIfAbsent(InitialContext.class, (k) -> createInitialContext(), InitialContext.class);
 		}
 
 		private InitialContext createInitialContext() {
@@ -181,8 +183,8 @@ class JtaAutoConfigurationTests {
 		@Override
 		public void afterEach(ExtensionContext context) throws Exception {
 			Namespace namespace = Namespace.create(getClass(), context.getUniqueId());
-			InitialContext initialContext = context.getStore(namespace).remove(InitialContext.class,
-					InitialContext.class);
+			InitialContext initialContext = context.getStore(namespace)
+				.remove(InitialContext.class, InitialContext.class);
 			initialContext.removeFromEnvironment("org.osjava.sj.jndi.ignoreClose");
 			initialContext.close();
 		}

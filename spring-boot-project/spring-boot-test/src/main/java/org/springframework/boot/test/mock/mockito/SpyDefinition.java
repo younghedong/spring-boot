@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2021 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -37,7 +37,10 @@ import static org.mockito.Mockito.mock;
  * A complete definition that can be used to create a Mockito spy.
  *
  * @author Phillip Webb
+ * @deprecated since 3.4.0 for removal in 3.6.0
  */
+@SuppressWarnings("removal")
+@Deprecated(since = "3.4.0", forRemoval = true)
 class SpyDefinition extends Definition {
 
 	private static final int MULTIPLIER = 31;
@@ -79,8 +82,10 @@ class SpyDefinition extends Definition {
 
 	@Override
 	public String toString() {
-		return new ToStringCreator(this).append("name", getName()).append("typeToSpy", this.typeToSpy)
-				.append("reset", getReset()).toString();
+		return new ToStringCreator(this).append("name", getName())
+			.append("typeToSpy", this.typeToSpy)
+			.append("reset", getReset())
+			.toString();
 	}
 
 	<T> T createSpy(Object instance) {

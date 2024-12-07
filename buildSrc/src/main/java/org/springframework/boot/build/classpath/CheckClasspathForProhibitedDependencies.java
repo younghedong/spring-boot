@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2021 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,7 +16,7 @@
 
 package org.springframework.boot.build.classpath;
 
-import java.io.IOException;
+import java.util.Set;
 import java.util.TreeSet;
 import java.util.stream.Collectors;
 
@@ -34,7 +34,12 @@ import org.gradle.api.tasks.TaskAction;
  *
  * @author Andy Wilkinson
  */
-public class CheckClasspathForProhibitedDependencies extends DefaultTask {
+public abstract class CheckClasspathForProhibitedDependencies extends DefaultTask {
+
+	private static final Set<String> PROHIBITED_GROUPS = Set.of("org.codehaus.groovy", "org.eclipse.jetty.toolchain",
+			"commons-logging", "org.apache.geronimo.specs", "com.sun.activation");
+
+	private static final Set<String> PERMITTED_JAVAX_GROUPS = Set.of("javax.batch", "javax.cache", "javax.money");
 
 	private Configuration classpath;
 
@@ -52,10 +57,14 @@ public class CheckClasspathForProhibitedDependencies extends DefaultTask {
 	}
 
 	@TaskAction
-	public void checkForProhibitedDependencies() throws IOException {
-		TreeSet<String> prohibited = this.classpath.getResolvedConfiguration().getResolvedArtifacts().stream()
-				.map((artifact) -> artifact.getModuleVersion().getId()).filter(this::prohibited)
-				.map((id) -> id.getGroup() + ":" + id.getName()).collect(Collectors.toCollection(TreeSet::new));
+	public void checkForProhibitedDependencies() {
+		TreeSet<String> prohibited = this.classpath.getResolvedConfiguration()
+			.getResolvedArtifacts()
+			.stream()
+			.map((artifact) -> artifact.getModuleVersion().getId())
+			.filter(this::prohibited)
+			.map((id) -> id.getGroup() + ":" + id.getName())
+			.collect(Collectors.toCollection(TreeSet::new));
 		if (!prohibited.isEmpty()) {
 			StringBuilder message = new StringBuilder(String.format("Found prohibited dependencies:%n"));
 			for (String dependency : prohibited) {
@@ -66,35 +75,20 @@ public class CheckClasspathForProhibitedDependencies extends DefaultTask {
 	}
 
 	private boolean prohibited(ModuleVersionIdentifier id) {
-		String group = id.getGroup();
-		if (group.equals("javax.batch")) {
-			return false;
-		}
-		if (group.equals("javax.cache")) {
-			return false;
-		}
-		if (group.equals("javax.money")) {
-			return false;
-		}
-		if (group.equals("org.codehaus.groovy")) {
-			return true;
-		}
-		if (group.startsWith("javax")) {
-			return true;
-		}
-		if (group.equals("commons-logging")) {
-			return true;
-		}
-		if (group.equals("org.slf4j") && id.getName().equals("jcl-over-slf4j")) {
-			return true;
-		}
-		if (group.startsWith("org.jboss.spec")) {
-			return true;
-		}
-		if (group.equals("org.apache.geronimo.specs")) {
-			return true;
-		}
-		return false;
+		return PROHIBITED_GROUPS.contains(id.getGroup()) || prohibitedJavax(id) || prohibitedSlf4j(id)
+				|| prohibitedJbossSpec(id);
+	}
+
+	private boolean prohibitedSlf4j(ModuleVersionIdentifier id) {
+		return id.getGroup().equals("org.slf4j") && id.getName().equals("jcl-over-slf4j");
+	}
+
+	private boolean prohibitedJbossSpec(ModuleVersionIdentifier id) {
+		return id.getGroup().startsWith("org.jboss.spec");
+	}
+
+	private boolean prohibitedJavax(ModuleVersionIdentifier id) {
+		return id.getGroup().startsWith("javax.") && !PERMITTED_JAVAX_GROUPS.contains(id.getGroup());
 	}
 
 }

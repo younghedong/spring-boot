@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2019 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,11 +23,10 @@ import java.util.Set;
 import org.springframework.boot.util.LambdaSafe;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.client.ClientHttpRequest;
-import org.springframework.http.client.ClientHttpRequestFactory;
 import org.springframework.http.client.ClientHttpRequestInitializer;
 
 /**
- * {@link ClientHttpRequestFactory} to apply customizations from the
+ * {@link ClientHttpRequestInitializer} to apply customizations from the
  * {@link RestTemplateBuilder}.
  *
  * @author Dmytro Nosan
@@ -57,7 +56,7 @@ class RestTemplateBuilderClientHttpRequestInitializer implements ClientHttpReque
 		}
 		this.defaultHeaders.forEach(headers::putIfAbsent);
 		LambdaSafe.callbacks(RestTemplateRequestCustomizer.class, this.requestCustomizers, request)
-				.invoke((customizer) -> customizer.customize(request));
+			.invoke((customizer) -> customizer.customize(request));
 	}
 
 }

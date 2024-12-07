@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2022 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,10 +23,16 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.gson.Gson;
 import jakarta.json.bind.Jsonb;
 
+import org.springframework.aot.hint.ExecutableMode;
+import org.springframework.aot.hint.MemberCategory;
+import org.springframework.aot.hint.ReflectionHints;
+import org.springframework.aot.hint.RuntimeHints;
+import org.springframework.aot.hint.RuntimeHintsRegistrar;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.BeansException;
 import org.springframework.beans.factory.FactoryBean;
 import org.springframework.beans.factory.config.BeanPostProcessor;
+import org.springframework.beans.factory.config.ConfigurableBeanFactory;
 import org.springframework.beans.factory.config.InstantiationAwareBeanPostProcessor;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
@@ -42,6 +48,7 @@ import org.springframework.boot.test.json.JacksonTester;
 import org.springframework.boot.test.json.JsonbTester;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.ImportRuntimeHints;
 import org.springframework.context.annotation.Scope;
 import org.springframework.core.ResolvableType;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -67,7 +74,8 @@ public class JsonTestersAutoConfiguration {
 	}
 
 	@Bean
-	@Scope("prototype")
+	@Scope(ConfigurableBeanFactory.SCOPE_PROTOTYPE)
+	@ImportRuntimeHints(BasicJsonTesterRuntimeHints.class)
 	public FactoryBean<BasicJsonTester> basicJsonTesterFactoryBean() {
 		return new JsonTesterFactoryBean<BasicJsonTester, Void>(BasicJsonTester.class, null);
 	}
@@ -77,10 +85,19 @@ public class JsonTestersAutoConfiguration {
 	static class JacksonJsonTestersConfiguration {
 
 		@Bean
-		@Scope("prototype")
+		@Scope(ConfigurableBeanFactory.SCOPE_PROTOTYPE)
 		@ConditionalOnBean(ObjectMapper.class)
+		@ImportRuntimeHints(JacksonTesterRuntimeHints.class)
 		FactoryBean<JacksonTester<?>> jacksonTesterFactoryBean(ObjectMapper mapper) {
 			return new JsonTesterFactoryBean<>(JacksonTester.class, mapper);
+		}
+
+		static class JacksonTesterRuntimeHints extends AbstractJsonMarshalTesterRuntimeHints {
+
+			JacksonTesterRuntimeHints() {
+				super(JacksonTester.class);
+			}
+
 		}
 
 	}
@@ -90,10 +107,19 @@ public class JsonTestersAutoConfiguration {
 	static class GsonJsonTestersConfiguration {
 
 		@Bean
-		@Scope("prototype")
+		@Scope(ConfigurableBeanFactory.SCOPE_PROTOTYPE)
 		@ConditionalOnBean(Gson.class)
+		@ImportRuntimeHints(GsonTesterRuntimeHints.class)
 		FactoryBean<GsonTester<?>> gsonTesterFactoryBean(Gson gson) {
 			return new JsonTesterFactoryBean<>(GsonTester.class, gson);
+		}
+
+		static class GsonTesterRuntimeHints extends AbstractJsonMarshalTesterRuntimeHints {
+
+			GsonTesterRuntimeHints() {
+				super(GsonTester.class);
+			}
+
 		}
 
 	}
@@ -103,10 +129,19 @@ public class JsonTestersAutoConfiguration {
 	static class JsonbJsonTesterConfiguration {
 
 		@Bean
-		@Scope("prototype")
+		@Scope(ConfigurableBeanFactory.SCOPE_PROTOTYPE)
 		@ConditionalOnBean(Jsonb.class)
+		@ImportRuntimeHints(JsonbJsonTesterRuntimeHints.class)
 		FactoryBean<JsonbTester<?>> jsonbTesterFactoryBean(Jsonb jsonb) {
 			return new JsonTesterFactoryBean<>(JsonbTester.class, jsonb);
+		}
+
+		static class JsonbJsonTesterRuntimeHints extends AbstractJsonMarshalTesterRuntimeHints {
+
+			JsonbJsonTesterRuntimeHints() {
+				super(JsonbTester.class);
+			}
+
 		}
 
 	}
@@ -185,6 +220,38 @@ public class JsonTestersAutoConfiguration {
 			if (tester != null) {
 				ReflectionTestUtils.invokeMethod(tester, "initialize", args);
 			}
+		}
+
+	}
+
+	@SuppressWarnings("rawtypes")
+	static class AbstractJsonMarshalTesterRuntimeHints implements RuntimeHintsRegistrar {
+
+		private final Class<? extends AbstractJsonMarshalTester> tester;
+
+		AbstractJsonMarshalTesterRuntimeHints(Class<? extends AbstractJsonMarshalTester> tester) {
+			this.tester = tester;
+		}
+
+		@Override
+		public void registerHints(RuntimeHints hints, ClassLoader classLoader) {
+			ReflectionHints reflection = hints.reflection();
+			reflection.registerType(this.tester, MemberCategory.INVOKE_DECLARED_CONSTRUCTORS);
+			reflection.registerMethod(
+					ReflectionUtils.findMethod(this.tester, "initialize", Class.class, ResolvableType.class),
+					ExecutableMode.INVOKE);
+		}
+
+	}
+
+	static class BasicJsonTesterRuntimeHints implements RuntimeHintsRegistrar {
+
+		@Override
+		public void registerHints(RuntimeHints hints, ClassLoader classLoader) {
+			ReflectionHints reflection = hints.reflection();
+			reflection.registerType(BasicJsonTester.class, MemberCategory.INVOKE_DECLARED_CONSTRUCTORS);
+			reflection.registerMethod(ReflectionUtils.findMethod(BasicJsonTester.class, "initialize", Class.class),
+					ExecutableMode.INVOKE);
 		}
 
 	}

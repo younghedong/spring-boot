@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2020 the original author or authors.
+ * Copyright 2012-2023 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,6 +23,7 @@ import java.net.MalformedURLException;
 import java.net.URL;
 import java.net.URLClassLoader;
 import java.net.URLDecoder;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -102,11 +103,12 @@ final class ChangeableUrls implements Iterable<URL> {
 	}
 
 	private static URL[] urlsFromClassLoader(ClassLoader classLoader) {
-		if (classLoader instanceof URLClassLoader) {
-			return ((URLClassLoader) classLoader).getURLs();
+		if (classLoader instanceof URLClassLoader urlClassLoader) {
+			return urlClassLoader.getURLs();
 		}
 		return Stream.of(ManagementFactory.getRuntimeMXBean().getClassPath().split(File.pathSeparator))
-				.map(ChangeableUrls::toURL).toArray(URL[]::new);
+			.map(ChangeableUrls::toURL)
+			.toArray(URL[]::new);
 	}
 
 	private static URL toURL(String classPathEntry) {
@@ -158,7 +160,7 @@ final class ChangeableUrls implements Iterable<URL> {
 					urls.add(referenced);
 				}
 				else {
-					referenced = new URL(jarUrl, URLDecoder.decode(entry, "UTF-8"));
+					referenced = new URL(jarUrl, URLDecoder.decode(entry, StandardCharsets.UTF_8));
 					if (new File(referenced.getFile()).exists()) {
 						urls.add(referenced);
 					}

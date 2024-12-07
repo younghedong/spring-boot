@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2022 the original author or authors.
+ * Copyright 2012-2023 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -54,7 +54,7 @@ class ConfigurationPropertySourcesTests {
 		sources.addLast(new MapPropertySource("config", Collections.singletonMap("server.port", "4568")));
 		int size = sources.size();
 		ConfigurationPropertySources.attach(environment);
-		assertThat(sources.size()).isEqualTo(size + 1);
+		assertThat(sources).hasSize(size + 1);
 		PropertyResolver resolver = new PropertySourcesPropertyResolver(sources);
 		assertThat(resolver.getProperty("server.port")).isEqualTo("1234");
 	}
@@ -66,7 +66,7 @@ class ConfigurationPropertySourcesTests {
 		ConfigurableEnvironment child = new StandardEnvironment();
 		child.merge(parent);
 		child.getPropertySources()
-				.addLast(new MapPropertySource("config", Collections.singletonMap("my.example_property", "1234")));
+			.addLast(new MapPropertySource("config", Collections.singletonMap("my.example_property", "1234")));
 		ConfigurationPropertySources.attach(child);
 		assertThat(child.getProperty("my.example-property")).isEqualTo("1234");
 	}
@@ -115,8 +115,9 @@ class ConfigurationPropertySourcesTests {
 	@Test
 	void fromPropertySourceShouldReturnSpringConfigurationPropertySource() {
 		PropertySource<?> source = new MapPropertySource("foo", Collections.singletonMap("foo", "bar"));
-		ConfigurationPropertySource configurationPropertySource = ConfigurationPropertySources.from(source).iterator()
-				.next();
+		ConfigurationPropertySource configurationPropertySource = ConfigurationPropertySources.from(source)
+			.iterator()
+			.next();
 		assertThat(configurationPropertySource).isInstanceOf(SpringConfigurationPropertySource.class);
 	}
 

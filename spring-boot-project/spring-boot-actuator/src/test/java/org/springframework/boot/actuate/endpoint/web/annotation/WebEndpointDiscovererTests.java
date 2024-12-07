@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2020 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -25,12 +25,14 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
 import java.util.function.Function;
-import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import org.assertj.core.api.Condition;
 import org.junit.jupiter.api.Test;
 
+import org.springframework.aot.hint.MemberCategory;
+import org.springframework.aot.hint.RuntimeHints;
+import org.springframework.aot.hint.predicate.RuntimeHintsPredicates;
 import org.springframework.boot.actuate.endpoint.EndpointId;
 import org.springframework.boot.actuate.endpoint.annotation.DeleteOperation;
 import org.springframework.boot.actuate.endpoint.annotation.Endpoint;
@@ -41,12 +43,15 @@ import org.springframework.boot.actuate.endpoint.invoke.convert.ConversionServic
 import org.springframework.boot.actuate.endpoint.invoker.cache.CachingOperationInvoker;
 import org.springframework.boot.actuate.endpoint.invoker.cache.CachingOperationInvokerAdvisor;
 import org.springframework.boot.actuate.endpoint.jmx.annotation.JmxEndpoint;
+import org.springframework.boot.actuate.endpoint.web.AdditionalPathsMapper;
 import org.springframework.boot.actuate.endpoint.web.EndpointMediaTypes;
 import org.springframework.boot.actuate.endpoint.web.ExposableWebEndpoint;
 import org.springframework.boot.actuate.endpoint.web.PathMapper;
 import org.springframework.boot.actuate.endpoint.web.WebEndpointHttpMethod;
 import org.springframework.boot.actuate.endpoint.web.WebOperation;
 import org.springframework.boot.actuate.endpoint.web.WebOperationRequestPredicate;
+import org.springframework.boot.actuate.endpoint.web.WebServerNamespace;
+import org.springframework.boot.actuate.endpoint.web.annotation.WebEndpointDiscoverer.WebEndpointDiscovererRuntimeHints;
 import org.springframework.context.annotation.AnnotationConfigApplicationContext;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -65,6 +70,7 @@ import static org.assertj.core.api.Assertions.assertThatIllegalStateException;
  * @author Andy Wilkinson
  * @author Stephane Nicoll
  * @author Phillip Webb
+ * @author Moritz Halbritter
  */
 class WebEndpointDiscovererTests {
 
@@ -77,8 +83,7 @@ class WebEndpointDiscovererTests {
 	void getEndpointsWhenWebExtensionIsMissingEndpointShouldThrowException() {
 		load(TestWebEndpointExtensionConfiguration.class,
 				(discoverer) -> assertThatIllegalStateException().isThrownBy(discoverer::getEndpoints)
-						.withMessageContaining(
-								"Invalid extension 'endpointExtension': no endpoint found with id 'test'"));
+					.withMessageContaining("Invalid extension 'endpointExtension': no endpoint found with id 'test'"));
 	}
 
 	@Test
@@ -127,40 +132,40 @@ class WebEndpointDiscovererTests {
 	void getEndpointsWhenTwoExtensionsHaveTheSameEndpointTypeShouldThrowException() {
 		load(ClashingWebEndpointConfiguration.class,
 				(discoverer) -> assertThatIllegalStateException().isThrownBy(discoverer::getEndpoints)
-						.withMessageContaining("Found multiple extensions for the endpoint bean "
-								+ "testEndpoint (testExtensionOne, testExtensionTwo)"));
+					.withMessageContaining("Found multiple extensions for the endpoint bean "
+							+ "testEndpoint (testExtensionOne, testExtensionTwo)"));
 	}
 
 	@Test
 	void getEndpointsWhenTwoStandardEndpointsHaveTheSameIdShouldThrowException() {
 		load(ClashingStandardEndpointConfiguration.class,
 				(discoverer) -> assertThatIllegalStateException().isThrownBy(discoverer::getEndpoints)
-						.withMessageContaining("Found two endpoints with the id 'test': "));
+					.withMessageContaining("Found two endpoints with the id 'test': "));
 	}
 
 	@Test
 	void getEndpointsWhenWhenEndpointHasTwoOperationsWithTheSameNameShouldThrowException() {
 		load(ClashingOperationsEndpointConfiguration.class,
 				(discoverer) -> assertThatIllegalStateException().isThrownBy(discoverer::getEndpoints)
-						.withMessageContaining("Unable to map duplicate endpoint operations: "
-								+ "[web request predicate GET to path 'test' "
-								+ "produces: application/json] to clashingOperationsEndpoint"));
+					.withMessageContaining("Unable to map duplicate endpoint operations: "
+							+ "[web request predicate GET to path 'test' "
+							+ "produces: application/json] to clashingOperationsEndpoint"));
 	}
 
 	@Test
 	void getEndpointsWhenExtensionIsNotCompatibleWithTheEndpointTypeShouldThrowException() {
 		load(InvalidWebExtensionConfiguration.class,
 				(discoverer) -> assertThatIllegalStateException().isThrownBy(discoverer::getEndpoints)
-						.withMessageContaining("Endpoint bean 'nonWebEndpoint' cannot support the "
-								+ "extension bean 'nonWebWebEndpointExtension'"));
+					.withMessageContaining("Endpoint bean 'nonWebEndpoint' cannot support the "
+							+ "extension bean 'nonWebWebEndpointExtension'"));
 	}
 
 	@Test
 	void getEndpointsWhenWhenExtensionHasTwoOperationsWithTheSameNameShouldThrowException() {
 		load(ClashingSelectorsWebEndpointExtensionConfiguration.class,
 				(discoverer) -> assertThatIllegalStateException().isThrownBy(discoverer::getEndpoints)
-						.withMessageContaining("Unable to map duplicate endpoint operations")
-						.withMessageContaining("to testEndpoint (clashingSelectorsExtension)"));
+					.withMessageContaining("Unable to map duplicate endpoint operations")
+					.withMessageContaining("to testEndpoint (clashingSelectorsExtension)"));
 	}
 
 	@Test
@@ -183,8 +188,10 @@ class WebEndpointDiscovererTests {
 			Map<EndpointId, ExposableWebEndpoint> endpoints = mapEndpoints(discoverer.getEndpoints());
 			assertThat(endpoints).containsOnlyKeys(EndpointId.of("resource"));
 			ExposableWebEndpoint endpoint = endpoints.get(EndpointId.of("resource"));
-			assertThat(requestPredicates(endpoint)).has(requestPredicates(path("resource")
-					.httpMethod(WebEndpointHttpMethod.GET).consumes().produces("application/octet-stream")));
+			assertThat(requestPredicates(endpoint))
+				.has(requestPredicates(path("resource").httpMethod(WebEndpointHttpMethod.GET)
+					.consumes()
+					.produces("application/octet-stream")));
 		});
 	}
 
@@ -197,8 +204,9 @@ class WebEndpointDiscovererTests {
 			assertThat(requestPredicates(endpoint)).has(requestPredicates(
 					path("custommediatypes").httpMethod(WebEndpointHttpMethod.GET).consumes().produces("text/plain"),
 					path("custommediatypes").httpMethod(WebEndpointHttpMethod.POST).consumes().produces("a/b", "c/d"),
-					path("custommediatypes").httpMethod(WebEndpointHttpMethod.DELETE).consumes()
-							.produces("text/plain")));
+					path("custommediatypes").httpMethod(WebEndpointHttpMethod.DELETE)
+						.consumes()
+						.produces("text/plain")));
 		});
 	}
 
@@ -210,10 +218,37 @@ class WebEndpointDiscovererTests {
 			ExposableWebEndpoint endpoint = endpoints.get(EndpointId.of("test"));
 			Condition<List<? extends WebOperationRequestPredicate>> expected = requestPredicates(
 					path("custom/test").httpMethod(WebEndpointHttpMethod.GET).consumes().produces("application/json"),
-					path("custom/test/{id}").httpMethod(WebEndpointHttpMethod.GET).consumes()
-							.produces("application/json"));
+					path("custom/test/{id}").httpMethod(WebEndpointHttpMethod.GET)
+						.consumes()
+						.produces("application/json"));
 			assertThat(requestPredicates(endpoint)).has(expected);
 		});
+	}
+
+	@Test
+	void getEndpointsWhenHasAdditionalPaths() {
+		AdditionalPathsMapper additionalPathsMapper = (id, webServerNamespace) -> {
+			if (!WebServerNamespace.SERVER.equals(webServerNamespace)) {
+				return Collections.emptyList();
+			}
+			return List.of("/test");
+		};
+		load((id) -> null, EndpointId::toString, additionalPathsMapper,
+				AdditionalOperationWebEndpointConfiguration.class, (discoverer) -> {
+					Map<EndpointId, ExposableWebEndpoint> endpoints = mapEndpoints(discoverer.getEndpoints());
+					ExposableWebEndpoint endpoint = endpoints.get(EndpointId.of("test"));
+					assertThat(endpoint.getAdditionalPaths(WebServerNamespace.SERVER)).containsExactly("/test");
+					assertThat(endpoint.getAdditionalPaths(WebServerNamespace.MANAGEMENT)).isEmpty();
+				});
+	}
+
+	@Test
+	void shouldRegisterHints() {
+		RuntimeHints runtimeHints = new RuntimeHints();
+		new WebEndpointDiscovererRuntimeHints().registerHints(runtimeHints, getClass().getClassLoader());
+		assertThat(RuntimeHintsPredicates.reflection()
+			.onType(WebEndpointFilter.class)
+			.withMemberCategories(MemberCategory.INVOKE_DECLARED_CONSTRUCTORS)).accepts(runtimeHints);
 	}
 
 	private void load(Class<?> configuration, Consumer<WebEndpointDiscoverer> consumer) {
@@ -222,6 +257,12 @@ class WebEndpointDiscovererTests {
 
 	private void load(Function<EndpointId, Long> timeToLive, PathMapper endpointPathMapper, Class<?> configuration,
 			Consumer<WebEndpointDiscoverer> consumer) {
+		load(timeToLive, endpointPathMapper, null, configuration, consumer);
+	}
+
+	private void load(Function<EndpointId, Long> timeToLive, PathMapper endpointPathMapper,
+			AdditionalPathsMapper additionalPathsMapper, Class<?> configuration,
+			Consumer<WebEndpointDiscoverer> consumer) {
 		try (AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext(configuration)) {
 			ConversionServiceParameterValueMapper parameterMapper = new ConversionServiceParameterValueMapper(
 					DefaultConversionService.getSharedInstance());
@@ -229,7 +270,9 @@ class WebEndpointDiscovererTests {
 					Collections.singletonList("application/json"));
 			WebEndpointDiscoverer discoverer = new WebEndpointDiscoverer(context, parameterMapper, mediaTypes,
 					Collections.singletonList(endpointPathMapper),
-					Collections.singleton(new CachingOperationInvokerAdvisor(timeToLive)), Collections.emptyList());
+					(additionalPathsMapper != null) ? Collections.singletonList(additionalPathsMapper) : null,
+					Collections.singleton(new CachingOperationInvokerAdvisor(timeToLive)), Collections.emptyList(),
+					Collections.emptyList());
 			consumer.accept(discoverer);
 		}
 	}
@@ -241,7 +284,7 @@ class WebEndpointDiscovererTests {
 	}
 
 	private List<WebOperationRequestPredicate> requestPredicates(ExposableWebEndpoint endpoint) {
-		return endpoint.getOperations().stream().map(WebOperation::getRequestPredicate).collect(Collectors.toList());
+		return endpoint.getOperations().stream().map(WebOperation::getRequestPredicate).toList();
 	}
 
 	private Condition<List<? extends WebOperationRequestPredicate>> requestPredicates(

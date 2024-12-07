@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2022 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,7 +23,9 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import org.apache.activemq.artemis.core.remoting.impl.invm.TransportConstants;
 
+import org.springframework.boot.autoconfigure.jms.JmsPoolConnectionFactoryProperties;
 import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.boot.context.properties.NestedConfigurationProperty;
 
 /**
  * Configuration properties for Artemis.
@@ -42,7 +44,7 @@ public class ArtemisProperties {
 	private ArtemisMode mode;
 
 	/**
-	 * Artemis broker port.
+	 * Artemis broker url.
 	 */
 	private String brokerUrl;
 
@@ -57,6 +59,9 @@ public class ArtemisProperties {
 	private String password;
 
 	private final Embedded embedded = new Embedded();
+
+	@NestedConfigurationProperty
+	private final JmsPoolConnectionFactoryProperties pool = new JmsPoolConnectionFactoryProperties();
 
 	public ArtemisMode getMode() {
 		return this.mode;
@@ -94,6 +99,10 @@ public class ArtemisProperties {
 		return this.embedded;
 	}
 
+	public JmsPoolConnectionFactoryProperties getPool() {
+		return this.pool;
+	}
+
 	/**
 	 * Configuration for an embedded Artemis server.
 	 */
@@ -122,12 +131,12 @@ public class ArtemisProperties {
 		private String dataDirectory;
 
 		/**
-		 * Comma-separated list of queues to create on startup.
+		 * List of queues to create on startup.
 		 */
 		private String[] queues = new String[0];
 
 		/**
-		 * Comma-separated list of topics to create on startup.
+		 * List of topics to create on startup.
 		 */
 		private String[] topics = new String[0];
 

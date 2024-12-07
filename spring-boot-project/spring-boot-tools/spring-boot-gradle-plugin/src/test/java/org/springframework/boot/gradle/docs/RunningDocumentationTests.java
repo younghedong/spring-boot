@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2022 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -43,47 +43,52 @@ class RunningDocumentationTests {
 	@TestTemplate
 	void bootRunMain() throws IOException {
 		writeMainClass();
-		assertThat(this.gradleBuild.script("src/docs/gradle/running/boot-run-main").build("bootRun").getOutput())
-				.contains("com.example.ExampleApplication");
+		assertThat(this.gradleBuild.script(Examples.DIR + "running/boot-run-main").build("bootRun").getOutput())
+			.contains("com.example.ExampleApplication");
 	}
 
 	@TestTemplate
 	void applicationPluginMainClassName() throws IOException {
 		writeMainClass();
-		assertThat(this.gradleBuild.script("src/docs/gradle/running/application-plugin-main-class-name")
-				.build("bootRun").getOutput()).contains("com.example.ExampleApplication");
+		assertThat(this.gradleBuild.script(Examples.DIR + "running/application-plugin-main-class-name")
+			.build("bootRun")
+			.getOutput()).contains("com.example.ExampleApplication");
 	}
 
 	@TestTemplate
 	void springBootDslMainClassName() throws IOException {
 		writeMainClass();
-		assertThat(this.gradleBuild.script("src/docs/gradle/running/spring-boot-dsl-main-class-name").build("bootRun")
-				.getOutput()).contains("com.example.ExampleApplication");
+		assertThat(this.gradleBuild.script(Examples.DIR + "running/spring-boot-dsl-main-class-name")
+			.build("bootRun")
+			.getOutput()).contains("com.example.ExampleApplication");
 	}
 
 	@TestTemplate
 	void bootRunSourceResources() {
-		assertThat(this.gradleBuild.script("src/docs/gradle/running/boot-run-source-resources")
-				.build("configuredClasspath").getOutput()).contains(new File("src/main/resources").getPath());
+		assertThat(this.gradleBuild.script(Examples.DIR + "running/boot-run-source-resources")
+			.build("configuredClasspath")
+			.getOutput()).contains(new File("src/main/resources").getPath());
 	}
 
 	@TestTemplate
 	void bootRunDisableOptimizedLaunch() {
-		assertThat(this.gradleBuild.script("src/docs/gradle/running/boot-run-disable-optimized-launch")
-				.build("optimizedLaunch").getOutput()).contains("false");
+		assertThat(this.gradleBuild.script(Examples.DIR + "running/boot-run-disable-optimized-launch")
+			.build("optimizedLaunch")
+			.getOutput()).contains("false");
 	}
 
 	@TestTemplate
 	void bootRunSystemPropertyDefaultValue() {
-		assertThat(this.gradleBuild.script("src/docs/gradle/running/boot-run-system-property")
-				.build("configuredSystemProperties").getOutput()).contains("com.example.property = default");
+		assertThat(this.gradleBuild.script(Examples.DIR + "running/boot-run-system-property")
+			.build("configuredSystemProperties")
+			.getOutput()).contains("com.example.property = default");
 	}
 
 	@TestTemplate
-	void bootRunSystemPropetry() {
-		assertThat(this.gradleBuild.script("src/docs/gradle/running/boot-run-system-property")
-				.build("-Pexample=custom", "configuredSystemProperties").getOutput())
-						.contains("com.example.property = custom");
+	void bootRunSystemProperty() {
+		assertThat(this.gradleBuild.script(Examples.DIR + "running/boot-run-system-property")
+			.build("-Pexample=custom", "configuredSystemProperties")
+			.getOutput()).contains("com.example.property = custom");
 	}
 
 	private void writeMainClass() throws IOException {

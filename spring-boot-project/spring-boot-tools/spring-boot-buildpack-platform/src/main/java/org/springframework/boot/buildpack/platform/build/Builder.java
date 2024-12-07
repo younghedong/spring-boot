@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2022 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,7 +20,6 @@ import java.io.IOException;
 import java.util.List;
 import java.util.function.Consumer;
 
-import org.springframework.boot.buildpack.platform.build.BuilderMetadata.Stack;
 import org.springframework.boot.buildpack.platform.docker.DockerApi;
 import org.springframework.boot.buildpack.platform.docker.TotalProgressEvent;
 import org.springframework.boot.buildpack.platform.docker.TotalProgressPullListener;
@@ -29,7 +28,9 @@ import org.springframework.boot.buildpack.platform.docker.UpdateListener;
 import org.springframework.boot.buildpack.platform.docker.configuration.DockerConfiguration;
 import org.springframework.boot.buildpack.platform.docker.configuration.ResolvedDockerHost;
 import org.springframework.boot.buildpack.platform.docker.transport.DockerEngineException;
+import org.springframework.boot.buildpack.platform.docker.type.Binding;
 import org.springframework.boot.buildpack.platform.docker.type.Image;
+import org.springframework.boot.buildpack.platform.docker.type.ImagePlatform;
 import org.springframework.boot.buildpack.platform.docker.type.ImageReference;
 import org.springframework.boot.buildpack.platform.io.IOBiConsumer;
 import org.springframework.boot.buildpack.platform.io.TarArchive;
@@ -98,16 +99,19 @@ public class Builder {
 	public void build(BuildRequest request) throws DockerEngineException, IOException {
 		Assert.notNull(request, "Request must not be null");
 		this.log.start(request);
+		validateBindings(request.getBindings());
 		String domain = request.getBuilder().getDomain();
 		PullPolicy pullPolicy = request.getPullPolicy();
-		ImageFetcher imageFetcher = new ImageFetcher(domain, getBuilderAuthHeader(), pullPolicy);
+		ImageFetcher imageFetcher = new ImageFetcher(domain, getBuilderAuthHeader(), pullPolicy,
+				request.getImagePlatform());
 		Image builderImage = imageFetcher.fetchImage(ImageType.BUILDER, request.getBuilder());
 		BuilderMetadata builderMetadata = BuilderMetadata.fromImage(builderImage);
-		request = withRunImageIfNeeded(request, builderMetadata.getStack());
+		request = withRunImageIfNeeded(request, builderMetadata);
 		Image runImage = imageFetcher.fetchImage(ImageType.RUNNER, request.getRunImage());
 		assertStackIdsMatch(runImage, builderImage);
 		BuildOwner buildOwner = BuildOwner.fromEnv(builderImage.getConfig().getEnv());
-		Buildpacks buildpacks = getBuildpacks(request, imageFetcher, builderMetadata);
+		BuildpackLayersMetadata buildpackLayersMetadata = BuildpackLayersMetadata.fromImage(builderImage);
+		Buildpacks buildpacks = getBuildpacks(request, imageFetcher, builderMetadata, buildpackLayersMetadata);
 		EphemeralBuilder ephemeralBuilder = new EphemeralBuilder(buildOwner, builderImage, request.getName(),
 				builderMetadata, request.getCreator(), request.getEnv(), buildpacks);
 		this.docker.image().load(ephemeralBuilder.getArchive(), UpdateListener.none());
@@ -123,28 +127,44 @@ public class Builder {
 		}
 	}
 
-	private BuildRequest withRunImageIfNeeded(BuildRequest request, Stack builderStack) {
+	private void validateBindings(List<Binding> bindings) {
+		for (Binding binding : bindings) {
+			if (binding.usesSensitiveContainerPath()) {
+				this.log.sensitiveTargetBindingDetected(binding);
+			}
+		}
+	}
+
+	private BuildRequest withRunImageIfNeeded(BuildRequest request, BuilderMetadata metadata) {
 		if (request.getRunImage() != null) {
 			return request;
 		}
-		return request.withRunImage(getRunImageReferenceForStack(builderStack));
+		return request.withRunImage(getRunImageReference(metadata));
 	}
 
-	private ImageReference getRunImageReferenceForStack(Stack stack) {
-		String name = stack.getRunImage().getImage();
-		Assert.state(StringUtils.hasText(name), "Run image must be specified in the builder image stack");
-		return ImageReference.of(name).inTaggedOrDigestForm();
+	private ImageReference getRunImageReference(BuilderMetadata metadata) {
+		if (metadata.getRunImages() != null && !metadata.getRunImages().isEmpty()) {
+			String runImageName = metadata.getRunImages().get(0).getImage();
+			return ImageReference.of(runImageName).inTaggedOrDigestForm();
+		}
+		String runImageName = metadata.getStack().getRunImage().getImage();
+		Assert.state(StringUtils.hasText(runImageName), "Run image must be specified in the builder image metadata");
+		return ImageReference.of(runImageName).inTaggedOrDigestForm();
 	}
 
 	private void assertStackIdsMatch(Image runImage, Image builderImage) {
 		StackId runImageStackId = StackId.fromImage(runImage);
 		StackId builderImageStackId = StackId.fromImage(builderImage);
-		Assert.state(runImageStackId.equals(builderImageStackId), () -> "Run image stack '" + runImageStackId
-				+ "' does not match builder stack '" + builderImageStackId + "'");
+		if (runImageStackId.hasId() && builderImageStackId.hasId()) {
+			Assert.state(runImageStackId.equals(builderImageStackId), () -> "Run image stack '" + runImageStackId
+					+ "' does not match builder stack '" + builderImageStackId + "'");
+		}
 	}
 
-	private Buildpacks getBuildpacks(BuildRequest request, ImageFetcher imageFetcher, BuilderMetadata builderMetadata) {
-		BuildpackResolverContext resolverContext = new BuilderResolverContext(imageFetcher, builderMetadata);
+	private Buildpacks getBuildpacks(BuildRequest request, ImageFetcher imageFetcher, BuilderMetadata builderMetadata,
+			BuildpackLayersMetadata buildpackLayersMetadata) {
+		BuildpackResolverContext resolverContext = new BuilderResolverContext(imageFetcher, builderMetadata,
+				buildpackLayersMetadata);
 		return BuildpackResolvers.resolveAll(resolverContext, request.getBuildpacks());
 	}
 
@@ -200,10 +220,13 @@ public class Builder {
 
 		private final PullPolicy pullPolicy;
 
-		ImageFetcher(String domain, String authHeader, PullPolicy pullPolicy) {
+		private ImagePlatform defaultPlatform;
+
+		ImageFetcher(String domain, String authHeader, PullPolicy pullPolicy, ImagePlatform platform) {
 			this.domain = domain;
 			this.authHeader = authHeader;
 			this.pullPolicy = pullPolicy;
+			this.defaultPlatform = platform;
 		}
 
 		Image fetchImage(ImageType type, ImageReference reference) throws IOException {
@@ -228,9 +251,12 @@ public class Builder {
 
 		private Image pullImage(ImageReference reference, ImageType imageType) throws IOException {
 			TotalProgressPullListener listener = new TotalProgressPullListener(
-					Builder.this.log.pullingImage(reference, imageType));
-			Image image = Builder.this.docker.image().pull(reference, listener, this.authHeader);
+					Builder.this.log.pullingImage(reference, this.defaultPlatform, imageType));
+			Image image = Builder.this.docker.image().pull(reference, this.defaultPlatform, listener, this.authHeader);
 			Builder.this.log.pulledImage(image, imageType);
+			if (this.defaultPlatform == null) {
+				this.defaultPlatform = ImagePlatform.from(image);
+			}
 			return image;
 		}
 
@@ -245,14 +271,23 @@ public class Builder {
 
 		private final BuilderMetadata builderMetadata;
 
-		BuilderResolverContext(ImageFetcher imageFetcher, BuilderMetadata builderMetadata) {
+		private final BuildpackLayersMetadata buildpackLayersMetadata;
+
+		BuilderResolverContext(ImageFetcher imageFetcher, BuilderMetadata builderMetadata,
+				BuildpackLayersMetadata buildpackLayersMetadata) {
 			this.imageFetcher = imageFetcher;
 			this.builderMetadata = builderMetadata;
+			this.buildpackLayersMetadata = buildpackLayersMetadata;
 		}
 
 		@Override
 		public List<BuildpackMetadata> getBuildpackMetadata() {
 			return this.builderMetadata.getBuildpacks();
+		}
+
+		@Override
+		public BuildpackLayersMetadata getBuildpackLayersMetadata() {
+			return this.buildpackLayersMetadata;
 		}
 
 		@Override

@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2022 the original author or authors.
+ * Copyright 2012-2023 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,10 +21,11 @@ import java.util.Map;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ThreadPoolExecutor;
 
-import io.micrometer.binder.jvm.ExecutorServiceMetrics;
 import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.binder.jvm.ExecutorServiceMetrics;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.LazyInitializationExcludeFilter;
 import org.springframework.boot.actuate.autoconfigure.metrics.MetricsAutoConfiguration;
 import org.springframework.boot.actuate.autoconfigure.metrics.export.simple.SimpleMetricsExportAutoConfiguration;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
@@ -33,6 +34,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.task.TaskExecutionAutoConfiguration;
 import org.springframework.boot.autoconfigure.task.TaskSchedulingAutoConfiguration;
+import org.springframework.context.annotation.Bean;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
 
@@ -54,13 +56,18 @@ public class TaskExecutorMetricsAutoConfiguration {
 	@Autowired
 	public void bindTaskExecutorsToRegistry(Map<String, Executor> executors, MeterRegistry registry) {
 		executors.forEach((beanName, executor) -> {
-			if (executor instanceof ThreadPoolTaskExecutor) {
-				monitor(registry, safeGetThreadPoolExecutor((ThreadPoolTaskExecutor) executor), beanName);
+			if (executor instanceof ThreadPoolTaskExecutor threadPoolTaskExecutor) {
+				monitor(registry, safeGetThreadPoolExecutor(threadPoolTaskExecutor), beanName);
 			}
-			else if (executor instanceof ThreadPoolTaskScheduler) {
-				monitor(registry, safeGetThreadPoolExecutor((ThreadPoolTaskScheduler) executor), beanName);
+			else if (executor instanceof ThreadPoolTaskScheduler threadPoolTaskScheduler) {
+				monitor(registry, safeGetThreadPoolExecutor(threadPoolTaskScheduler), beanName);
 			}
 		});
+	}
+
+	@Bean
+	static LazyInitializationExcludeFilter eagerTaskExecutorMetrics() {
+		return LazyInitializationExcludeFilter.forBeanTypes(TaskExecutorMetricsAutoConfiguration.class);
 	}
 
 	private void monitor(MeterRegistry registry, ThreadPoolExecutor threadPoolExecutor, String name) {

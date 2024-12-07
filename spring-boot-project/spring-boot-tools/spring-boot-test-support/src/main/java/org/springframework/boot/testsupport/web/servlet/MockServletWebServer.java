@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2021 the original author or authors.
+ * Copyright 2012-2023 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -46,7 +46,6 @@ import static org.mockito.Mockito.mock;
  *
  * @author Phillip Webb
  * @author Andy Wilkinson
- * @since 2.0.0
  */
 public abstract class MockServletWebServer {
 
@@ -87,9 +86,10 @@ public abstract class MockServletWebServer {
 				return null;
 			}).when(this.servletContext).setInitParameter(anyString(), anyString());
 			given(this.servletContext.getInitParameterNames())
-					.willReturn(Collections.enumeration(initParameters.keySet()));
-			lenient().doAnswer((invocation) -> initParameters.get(invocation.getArgument(0))).when(this.servletContext)
-					.getInitParameter(anyString());
+				.willReturn(Collections.enumeration(initParameters.keySet()));
+			lenient().doAnswer((invocation) -> initParameters.get(invocation.getArgument(0)))
+				.when(this.servletContext)
+				.getInitParameter(anyString());
 			given(this.servletContext.getAttributeNames()).willReturn(Collections.emptyEnumeration());
 			for (Initializer initializer : this.initializers) {
 				initializer.onStartup(this.servletContext);

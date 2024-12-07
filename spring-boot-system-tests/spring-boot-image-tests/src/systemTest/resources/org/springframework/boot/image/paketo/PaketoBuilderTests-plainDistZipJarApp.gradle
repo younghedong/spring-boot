@@ -15,8 +15,7 @@ repositories {
 		}
 	}
 	mavenCentral()
-	maven { url 'https://repo.spring.io/milestone' }
-	maven { url 'https://repo.spring.io/snapshot' }
+	spring.mavenRepositories()
 }
 
 dependencies {
@@ -37,5 +36,7 @@ application {
 }
 
 bootBuildImage {
-	archiveFile = new File("${buildDir}/distributions/${project.name}.zip")
+	archiveFile = distZip.archiveFile
+	builder = "paketobuildpacks/builder-jammy-base:latest"
+	environment = ['BP_JVM_VERSION': java.targetCompatibility.getMajorVersion()]
 }

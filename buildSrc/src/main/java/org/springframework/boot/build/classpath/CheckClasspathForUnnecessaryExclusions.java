@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2021 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,7 +18,6 @@ package org.springframework.boot.build.classpath;
 
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
@@ -39,6 +38,8 @@ import org.gradle.api.artifacts.ModuleDependency;
 import org.gradle.api.artifacts.component.ModuleComponentIdentifier;
 import org.gradle.api.artifacts.dsl.DependencyHandler;
 import org.gradle.api.artifacts.result.ResolvedArtifactResult;
+import org.gradle.api.file.FileCollection;
+import org.gradle.api.tasks.Classpath;
 import org.gradle.api.tasks.Input;
 import org.gradle.api.tasks.TaskAction;
 
@@ -47,7 +48,7 @@ import org.gradle.api.tasks.TaskAction;
  *
  * @author Andy Wilkinson
  */
-public class CheckClasspathForUnnecessaryExclusions extends DefaultTask {
+public abstract class CheckClasspathForUnnecessaryExclusions extends DefaultTask {
 
 	private static final Map<String, String> SPRING_BOOT_DEPENDENCIES_PROJECT = Collections.singletonMap("path",
 			":spring-boot-project:spring-boot-dependencies");
@@ -58,39 +59,49 @@ public class CheckClasspathForUnnecessaryExclusions extends DefaultTask {
 
 	private final Dependency platform;
 
-	private final DependencyHandler dependencyHandler;
+	private final DependencyHandler dependencies;
 
 	private final ConfigurationContainer configurations;
+
+	private Configuration classpath;
 
 	@Inject
 	public CheckClasspathForUnnecessaryExclusions(DependencyHandler dependencyHandler,
 			ConfigurationContainer configurations) {
-		this.dependencyHandler = getProject().getDependencies();
+		this.dependencies = getProject().getDependencies();
 		this.configurations = getProject().getConfigurations();
-		this.platform = this.dependencyHandler.create(
-				this.dependencyHandler.platform(this.dependencyHandler.project(SPRING_BOOT_DEPENDENCIES_PROJECT)));
+		this.platform = this.dependencies
+			.create(this.dependencies.platform(this.dependencies.project(SPRING_BOOT_DEPENDENCIES_PROJECT)));
 		getOutputs().upToDateWhen((task) -> true);
 	}
 
 	public void setClasspath(Configuration classpath) {
+		this.classpath = classpath;
 		this.exclusionsByDependencyId.clear();
 		this.dependencyById.clear();
 		classpath.getAllDependencies().all(this::processDependency);
 	}
 
+	@Classpath
+	public FileCollection getClasspath() {
+		return this.classpath;
+	}
+
 	private void processDependency(Dependency dependency) {
-		if (dependency instanceof ModuleDependency) {
-			processDependency((ModuleDependency) dependency);
+		if (dependency instanceof ModuleDependency moduleDependency) {
+			processDependency(moduleDependency);
 		}
 	}
 
 	private void processDependency(ModuleDependency dependency) {
 		String dependencyId = getId(dependency);
-		TreeSet<String> exclusions = dependency.getExcludeRules().stream().map(this::getId)
-				.collect(Collectors.toCollection(TreeSet::new));
+		TreeSet<String> exclusions = dependency.getExcludeRules()
+			.stream()
+			.map(this::getId)
+			.collect(Collectors.toCollection(TreeSet::new));
 		this.exclusionsByDependencyId.put(dependencyId, exclusions);
 		if (!exclusions.isEmpty()) {
-			this.dependencyById.put(dependencyId, getProject().getDependencies().create(dependencyId));
+			this.dependencyById.put(dependencyId, this.dependencies.create(dependencyId));
 		}
 	}
 
@@ -105,10 +116,13 @@ public class CheckClasspathForUnnecessaryExclusions extends DefaultTask {
 		this.exclusionsByDependencyId.forEach((dependencyId, exclusions) -> {
 			if (!exclusions.isEmpty()) {
 				Dependency toCheck = this.dependencyById.get(dependencyId);
-				List<String> dependencies = this.configurations.detachedConfiguration(toCheck, this.platform)
-						.getIncoming().getArtifacts().getArtifacts().stream().map(this::getId)
-						.collect(Collectors.toList());
-				exclusions.removeAll(dependencies);
+				this.configurations.detachedConfiguration(toCheck, this.platform)
+					.getIncoming()
+					.getArtifacts()
+					.getArtifacts()
+					.stream()
+					.map(this::getId)
+					.forEach(exclusions::remove);
 				removeProfileExclusions(dependencyId, exclusions);
 				if (!exclusions.isEmpty()) {
 					unnecessaryExclusions.put(dependencyId, exclusions);

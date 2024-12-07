@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2022 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -36,10 +36,13 @@ import io.undertow.Undertow.Builder;
 import io.undertow.servlet.api.DeploymentInfo;
 import io.undertow.servlet.api.ServletContainer;
 import jakarta.servlet.ServletRegistration.Dynamic;
-import org.apache.http.HttpResponse;
+import org.apache.hc.client5.http.classic.HttpClient;
+import org.apache.hc.client5.http.impl.classic.HttpClients;
+import org.apache.hc.core5.http.HttpResponse;
 import org.apache.jasper.servlet.JspServlet;
 import org.awaitility.Awaitility;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.mockito.InOrder;
 
@@ -96,15 +99,15 @@ class UndertowServletWebServerFactoryTests extends AbstractServletWebServerFacto
 	void setNullBuilderCustomizersThrows() {
 		UndertowServletWebServerFactory factory = getFactory();
 		assertThatIllegalArgumentException().isThrownBy(() -> factory.setBuilderCustomizers(null))
-				.withMessageContaining("Customizers must not be null");
+			.withMessageContaining("Customizers must not be null");
 	}
 
 	@Test
 	void addNullAddBuilderCustomizersThrows() {
 		UndertowServletWebServerFactory factory = getFactory();
 		assertThatIllegalArgumentException()
-				.isThrownBy(() -> factory.addBuilderCustomizers((UndertowBuilderCustomizer[]) null))
-				.withMessageContaining("Customizers must not be null");
+			.isThrownBy(() -> factory.addBuilderCustomizers((UndertowBuilderCustomizer[]) null))
+			.withMessageContaining("Customizers must not be null");
 	}
 
 	@Test
@@ -125,15 +128,15 @@ class UndertowServletWebServerFactoryTests extends AbstractServletWebServerFacto
 	void setNullDeploymentInfoCustomizersThrows() {
 		UndertowServletWebServerFactory factory = getFactory();
 		assertThatIllegalArgumentException().isThrownBy(() -> factory.setDeploymentInfoCustomizers(null))
-				.withMessageContaining("Customizers must not be null");
+			.withMessageContaining("Customizers must not be null");
 	}
 
 	@Test
 	void addNullAddDeploymentInfoCustomizersThrows() {
 		UndertowServletWebServerFactory factory = getFactory();
 		assertThatIllegalArgumentException()
-				.isThrownBy(() -> factory.addDeploymentInfoCustomizers((UndertowDeploymentInfoCustomizer[]) null))
-				.withMessageContaining("Customizers must not be null");
+			.isThrownBy(() -> factory.addDeploymentInfoCustomizers((UndertowDeploymentInfoCustomizer[]) null))
+			.withMessageContaining("Customizers must not be null");
 	}
 
 	@Test
@@ -207,9 +210,56 @@ class UndertowServletWebServerFactoryTests extends AbstractServletWebServerFacto
 		assertThat(request.get()).isInstanceOf(HttpResponse.class);
 		Object rejectedResult = initiateGetRequest(port, "/").get();
 		assertThat(rejectedResult).isInstanceOf(HttpResponse.class);
-		assertThat(((HttpResponse) rejectedResult).getStatusLine().getStatusCode())
-				.isEqualTo(HttpStatus.SERVICE_UNAVAILABLE.value());
+		assertThat(((HttpResponse) rejectedResult).getCode()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE.value());
 		this.webServer.stop();
+	}
+
+	@Test
+	void whenServerIsShuttingDownARequestOnAnIdleConnectionAreRejectedWithServiceUnavailable() throws Exception {
+		AbstractServletWebServerFactory factory = getFactory();
+		factory.setShutdown(Shutdown.GRACEFUL);
+		BlockingServlet blockingServlet = new BlockingServlet();
+		this.webServer = factory.getWebServer((context) -> {
+			Dynamic registration = context.addServlet("blockingServlet", blockingServlet);
+			registration.addMapping("/blocking");
+			registration.setAsyncSupported(true);
+		});
+		HttpClient httpClient = HttpClients.createMinimal();
+		this.webServer.start();
+		int port = this.webServer.getPort();
+		Future<Object> keepAliveRequest = initiateGetRequest(httpClient, port, "/blocking");
+		blockingServlet.awaitQueue();
+		blockingServlet.admitOne();
+		assertThat(keepAliveRequest.get()).isInstanceOf(HttpResponse.class);
+		Future<Object> request = initiateGetRequest(port, "/blocking");
+		blockingServlet.awaitQueue();
+		this.webServer.shutDownGracefully((result) -> {
+		});
+		HttpResponse idleConnectionResponse = (HttpResponse) initiateGetRequest(httpClient, port, "/").get();
+		assertThat(idleConnectionResponse.getCode()).isEqualTo(503);
+		blockingServlet.admitOne();
+		Object response = request.get();
+		assertThat(response).isInstanceOf(HttpResponse.class);
+		this.webServer.stop();
+	}
+
+	@Test
+	@Override
+	@Disabled("https://issues.redhat.com/browse/UNDERTOW-2420")
+	protected void portClashOfSecondaryConnectorResultsInPortInUseException() throws Exception {
+		super.portClashOfSecondaryConnectorResultsInPortInUseException();
+	}
+
+	@Test
+	@Override
+	@Disabled("Restart after stop is not supported with Undertow")
+	protected void restartAfterStop() {
+	}
+
+	@Test
+	@Override
+	@Disabled("Undertow's architecture prevents separating stop and destroy")
+	protected void servletContextListenerContextDestroyedIsNotCalledWhenContainerIsStopped() {
 	}
 
 	private void testAccessLog(String prefix, String suffix, String expectedFile)
@@ -220,7 +270,7 @@ class UndertowServletWebServerFactoryTests extends AbstractServletWebServerFacto
 		factory.setAccessLogSuffix(suffix);
 		File accessLogDirectory = this.tempDir;
 		factory.setAccessLogDirectory(accessLogDirectory);
-		assertThat(accessLogDirectory.listFiles()).isEmpty();
+		assertThat(accessLogDirectory).isEmptyDirectory();
 		this.webServer = factory.getWebServer(new ServletRegistrationBean<>(new ExampleServlet(), "/hello"));
 		this.webServer.start();
 		assertThat(getResponse(getLocalUrl("/hello"))).isEqualTo("Hello World");
@@ -232,23 +282,23 @@ class UndertowServletWebServerFactoryTests extends AbstractServletWebServerFacto
 	@Override
 	protected void addConnector(int port, AbstractServletWebServerFactory factory) {
 		((UndertowServletWebServerFactory) factory)
-				.addBuilderCustomizers((builder) -> builder.addHttpListener(port, "0.0.0.0"));
+			.addBuilderCustomizers((builder) -> builder.addHttpListener(port, "0.0.0.0"));
 	}
 
 	@Test
 	void sslRestrictedProtocolsEmptyCipherFailure() {
 		assertThatIOException()
-				.isThrownBy(() -> testRestrictedSSLProtocolsAndCipherSuites(new String[] { "TLSv1.2" },
-						new String[] { "TLS_EMPTY_RENEGOTIATION_INFO_SCSV" }))
-				.isInstanceOfAny(SSLException.class, SSLHandshakeException.class, SocketException.class);
+			.isThrownBy(() -> testRestrictedSSLProtocolsAndCipherSuites(new String[] { "TLSv1.2" },
+					new String[] { "TLS_EMPTY_RENEGOTIATION_INFO_SCSV" }))
+			.isInstanceOfAny(SSLException.class, SSLHandshakeException.class, SocketException.class);
 	}
 
 	@Test
 	void sslRestrictedProtocolsECDHETLS1Failure() {
 		assertThatIOException()
-				.isThrownBy(() -> testRestrictedSSLProtocolsAndCipherSuites(new String[] { "TLSv1" },
-						new String[] { "TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256" }))
-				.isInstanceOfAny(SSLException.class, SocketException.class);
+			.isThrownBy(() -> testRestrictedSSLProtocolsAndCipherSuites(new String[] { "TLSv1" },
+					new String[] { "TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256" }))
+			.isInstanceOfAny(SSLException.class, SocketException.class);
 	}
 
 	@Test
@@ -266,9 +316,9 @@ class UndertowServletWebServerFactoryTests extends AbstractServletWebServerFacto
 	@Test
 	void sslRestrictedProtocolsRSATLS11Failure() {
 		assertThatIOException()
-				.isThrownBy(() -> testRestrictedSSLProtocolsAndCipherSuites(new String[] { "TLSv1.1" },
-						new String[] { "TLS_RSA_WITH_AES_128_CBC_SHA256" }))
-				.isInstanceOfAny(SSLException.class, SocketException.class);
+			.isThrownBy(() -> testRestrictedSSLProtocolsAndCipherSuites(new String[] { "TLSv1.1" },
+					new String[] { "TLS_RSA_WITH_AES_128_CBC_SHA256" }))
+			.isInstanceOfAny(SSLException.class, SocketException.class);
 	}
 
 	@Override
@@ -292,14 +342,16 @@ class UndertowServletWebServerFactoryTests extends AbstractServletWebServerFacto
 
 	@Override
 	protected Map<String, String> getActualMimeMappings() {
-		return ((UndertowServletWebServer) this.webServer).getDeploymentManager().getDeployment()
-				.getMimeExtensionMappings();
+		return ((UndertowServletWebServer) this.webServer).getDeploymentManager()
+			.getDeployment()
+			.getMimeExtensionMappings();
 	}
 
 	@Override
 	protected Charset getCharset(Locale locale) {
-		DeploymentInfo info = ((UndertowServletWebServer) this.webServer).getDeploymentManager().getDeployment()
-				.getDeploymentInfo();
+		DeploymentInfo info = ((UndertowServletWebServer) this.webServer).getDeploymentManager()
+			.getDeployment()
+			.getDeploymentInfo();
 		String charsetName = info.getLocaleCharsetMapping().get(locale.toString());
 		return (charsetName != null) ? Charset.forName(charsetName) : null;
 	}
@@ -315,6 +367,11 @@ class UndertowServletWebServerFactoryTests extends AbstractServletWebServerFacto
 	@Override
 	protected void handleExceptionCausedByBlockedPortOnSecondaryConnector(RuntimeException ex, int blockedPort) {
 		handleExceptionCausedByBlockedPortOnPrimaryConnector(ex, blockedPort);
+	}
+
+	@Override
+	protected String startedLogMessage() {
+		return ((UndertowServletWebServer) this.webServer).getStartLogMessage();
 	}
 
 }

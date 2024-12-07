@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2019 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,12 +17,14 @@
 package org.springframework.boot.convert;
 
 import java.io.File;
+import java.io.IOException;
 import java.util.stream.Stream;
 
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.provider.Arguments;
 
 import org.springframework.core.convert.ConversionService;
+import org.springframework.core.io.ClassPathResource;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -30,6 +32,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * Tests for {@link StringToFileConverter}.
  *
  * @author Phillip Webb
+ * @author Scott Frederick
  */
 class StringToFileConverterTests {
 
@@ -39,13 +42,20 @@ class StringToFileConverterTests {
 	@ConversionServiceTest
 	void convertWhenSimpleFileReturnsFile(ConversionService conversionService) {
 		assertThat(convert(conversionService, this.temp.getAbsolutePath() + "/test"))
-				.isEqualTo(new File(this.temp, "test").getAbsoluteFile());
+			.isEqualTo(new File(this.temp, "test").getAbsoluteFile());
 	}
 
 	@ConversionServiceTest
 	void convertWhenFilePrefixedReturnsFile(ConversionService conversionService) {
 		assertThat(convert(conversionService, "file:" + this.temp.getAbsolutePath() + "/test").getAbsoluteFile())
-				.isEqualTo(new File(this.temp, "test").getAbsoluteFile());
+			.isEqualTo(new File(this.temp, "test").getAbsoluteFile());
+	}
+
+	@ConversionServiceTest
+	void convertWhenClasspathPrefixedReturnsFile(ConversionService conversionService) throws IOException {
+		String resource = new ClassPathResource("test-banner.txt", this.getClass().getClassLoader()).getURL().getFile();
+		assertThat(convert(conversionService, "classpath:test-banner.txt").getAbsoluteFile())
+			.isEqualTo(new File(resource).getAbsoluteFile());
 	}
 
 	private File convert(ConversionService conversionService, String source) {
@@ -54,7 +64,7 @@ class StringToFileConverterTests {
 
 	static Stream<? extends Arguments> conversionServices() {
 		return ConversionServiceArguments
-				.with((conversionService) -> conversionService.addConverter(new StringToFileConverter()));
+			.with((conversionService) -> conversionService.addConverter(new StringToFileConverter()));
 	}
 
 }

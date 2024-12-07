@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2020 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -27,9 +27,10 @@ import org.springframework.core.env.MapPropertySource;
 import org.springframework.core.env.MutablePropertySources;
 import org.springframework.mock.env.MockEnvironment;
 import org.springframework.test.context.support.TestPropertySourceUtils;
+import org.springframework.util.PlaceholderResolutionException;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
+import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
 
 /**
  * Tests for {@link SpringBootTestRandomPortEnvironmentPostProcessor}.
@@ -39,7 +40,7 @@ import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException
  */
 class SpringBootTestRandomPortEnvironmentPostProcessorTests {
 
-	private SpringBootTestRandomPortEnvironmentPostProcessor postProcessor = new SpringBootTestRandomPortEnvironmentPostProcessor();
+	private final SpringBootTestRandomPortEnvironmentPostProcessor postProcessor = new SpringBootTestRandomPortEnvironmentPostProcessor();
 
 	private MockEnvironment environment;
 
@@ -106,7 +107,7 @@ class SpringBootTestRandomPortEnvironmentPostProcessorTests {
 		this.propertySources.addLast(otherSource);
 		this.postProcessor.postProcessEnvironment(this.environment, null);
 		assertThat(this.environment.getProperty("server.port")).isEqualTo("0");
-		assertThat(this.environment.getProperty("management.server.port")).isEqualTo("");
+		assertThat(this.environment.getProperty("management.server.port")).isEmpty();
 	}
 
 	@Test
@@ -115,17 +116,17 @@ class SpringBootTestRandomPortEnvironmentPostProcessorTests {
 		// is null in app properties
 		addTestPropertySource("0", null);
 		this.propertySources
-				.addLast(new MapPropertySource("other", Collections.singletonMap("management.server.port", "8080")));
+			.addLast(new MapPropertySource("other", Collections.singletonMap("management.server.port", "8080")));
 		this.postProcessor.postProcessEnvironment(this.environment, null);
 		assertThat(this.environment.getProperty("server.port")).isEqualTo("0");
-		assertThat(this.environment.getProperty("management.server.port")).isEqualTo("");
+		assertThat(this.environment.getProperty("management.server.port")).isEmpty();
 	}
 
 	@Test
 	void postProcessWhenTestServerPortIsZeroAndManagementPortIsNotNullAndDifferentInProduction() {
 		addTestPropertySource("0", null);
 		this.propertySources
-				.addLast(new MapPropertySource("other", Collections.singletonMap("management.server.port", "8081")));
+			.addLast(new MapPropertySource("other", Collections.singletonMap("management.server.port", "8081")));
 		this.postProcessor.postProcessEnvironment(this.environment, null);
 		assertThat(this.environment.getProperty("server.port")).isEqualTo("0");
 		assertThat(this.environment.getProperty("management.server.port")).isEqualTo("0");
@@ -135,7 +136,7 @@ class SpringBootTestRandomPortEnvironmentPostProcessorTests {
 	void postProcessWhenTestServerPortIsZeroAndManagementPortMinusOne() {
 		addTestPropertySource("0", null);
 		this.propertySources
-				.addLast(new MapPropertySource("other", Collections.singletonMap("management.server.port", "-1")));
+			.addLast(new MapPropertySource("other", Collections.singletonMap("management.server.port", "-1")));
 		this.postProcessor.postProcessEnvironment(this.environment, null);
 		assertThat(this.environment.getProperty("server.port")).isEqualTo("0");
 		assertThat(this.environment.getProperty("management.server.port")).isEqualTo("-1");
@@ -145,7 +146,7 @@ class SpringBootTestRandomPortEnvironmentPostProcessorTests {
 	void postProcessWhenTestServerPortIsZeroAndManagementPortIsAnInteger() {
 		addTestPropertySource("0", null);
 		this.propertySources
-				.addLast(new MapPropertySource("other", Collections.singletonMap("management.server.port", 8081)));
+			.addLast(new MapPropertySource("other", Collections.singletonMap("management.server.port", 8081)));
 		this.postProcessor.postProcessEnvironment(this.environment, null);
 		assertThat(this.environment.getProperty("server.port")).isEqualTo("0");
 		assertThat(this.environment.getProperty("management.server.port")).isEqualTo("0");
@@ -155,10 +156,10 @@ class SpringBootTestRandomPortEnvironmentPostProcessorTests {
 	void postProcessWhenManagementServerPortPlaceholderPresentShouldResolvePlaceholder() {
 		addTestPropertySource("0", null);
 		MapPropertySource testPropertySource = (MapPropertySource) this.propertySources
-				.get(TestPropertySourceUtils.INLINED_PROPERTIES_PROPERTY_SOURCE_NAME);
+			.get(TestPropertySourceUtils.INLINED_PROPERTIES_PROPERTY_SOURCE_NAME);
 		testPropertySource.getSource().put("port", "9090");
 		this.propertySources
-				.addLast(new MapPropertySource("other", Collections.singletonMap("management.server.port", "${port}")));
+			.addLast(new MapPropertySource("other", Collections.singletonMap("management.server.port", "${port}")));
 		this.postProcessor.postProcessEnvironment(this.environment, null);
 		assertThat(this.environment.getProperty("server.port")).isEqualTo("0");
 		assertThat(this.environment.getProperty("management.server.port")).isEqualTo("0");
@@ -168,17 +169,17 @@ class SpringBootTestRandomPortEnvironmentPostProcessorTests {
 	void postProcessWhenManagementServerPortPlaceholderAbsentShouldFail() {
 		addTestPropertySource("0", null);
 		this.propertySources
-				.addLast(new MapPropertySource("other", Collections.singletonMap("management.server.port", "${port}")));
-		assertThatIllegalArgumentException()
-				.isThrownBy(() -> this.postProcessor.postProcessEnvironment(this.environment, null))
-				.withMessage("Could not resolve placeholder 'port' in value \"${port}\"");
+			.addLast(new MapPropertySource("other", Collections.singletonMap("management.server.port", "${port}")));
+		assertThatExceptionOfType(PlaceholderResolutionException.class)
+			.isThrownBy(() -> this.postProcessor.postProcessEnvironment(this.environment, null))
+			.withMessage("Could not resolve placeholder 'port' in value \"${port}\"");
 	}
 
 	@Test
 	void postProcessWhenServerPortPlaceholderPresentShouldResolvePlaceholder() {
 		addTestPropertySource("0", null);
 		MapPropertySource testPropertySource = (MapPropertySource) this.propertySources
-				.get(TestPropertySourceUtils.INLINED_PROPERTIES_PROPERTY_SOURCE_NAME);
+			.get(TestPropertySourceUtils.INLINED_PROPERTIES_PROPERTY_SOURCE_NAME);
 		testPropertySource.getSource().put("port", "8080");
 		Map<String, Object> source = new HashMap<>();
 		source.put("server.port", "${port}");
@@ -196,9 +197,9 @@ class SpringBootTestRandomPortEnvironmentPostProcessorTests {
 		source.put("server.port", "${port}");
 		source.put("management.server.port", "9090");
 		this.propertySources.addLast(new MapPropertySource("other", source));
-		assertThatIllegalArgumentException()
-				.isThrownBy(() -> this.postProcessor.postProcessEnvironment(this.environment, null))
-				.withMessage("Could not resolve placeholder 'port' in value \"${port}\"");
+		assertThatExceptionOfType(PlaceholderResolutionException.class)
+			.isThrownBy(() -> this.postProcessor.postProcessEnvironment(this.environment, null))
+			.withMessage("Could not resolve placeholder 'port' in value \"${port}\"");
 	}
 
 	private void addTestPropertySource(String serverPort, String managementPort) {

@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2019 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -42,13 +42,20 @@ import org.springframework.test.context.junit.jupiter.SpringExtension;
 /**
  * Annotation for a JSON test that focuses <strong>only</strong> on JSON serialization.
  * <p>
- * Using this annotation will disable full auto-configuration and instead apply only
- * configuration relevant to JSON tests (i.e. {@code @JsonComponent}, Jackson
- * {@code Module})
+ * Using this annotation only enables auto-configuration that is relevant to JSON tests.
+ * Similarly, component scanning is limited to beans annotated with:
+ * <ul>
+ * <li>{@code @JsonComponent}</li>
+ * </ul>
+ * <p>
+ * as well as beans that implement:
+ * <ul>
+ * <li>{@code Module}, if Jackson is available</li>
+ * </ul>
  * <p>
  * By default, tests annotated with {@code JsonTest} will also initialize
  * {@link JacksonTester}, {@link JsonbTester} and {@link GsonTester} fields. More
- * fine-grained control can be provided via the
+ * fine-grained control can be provided through the
  * {@link AutoConfigureJsonTesters @AutoConfigureJsonTesters} annotation.
  * <p>
  * When using JUnit 4, this annotation should be used in combination with
@@ -70,7 +77,6 @@ import org.springframework.test.context.junit.jupiter.SpringExtension;
 @OverrideAutoConfiguration(enabled = false)
 @TypeExcludeFilters(JsonTypeExcludeFilter.class)
 @AutoConfigureCache
-@AutoConfigureJson
 @AutoConfigureJsonTesters
 @ImportAutoConfiguration
 public @interface JsonTest {

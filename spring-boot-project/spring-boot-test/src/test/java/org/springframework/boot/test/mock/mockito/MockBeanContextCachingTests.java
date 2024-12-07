@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2020 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -42,10 +42,13 @@ import static org.mockito.Mockito.mock;
  * Tests for application context caching when using {@link MockBean @MockBean}.
  *
  * @author Andy Wilkinson
+ * @deprecated since 3.4.0 for removal in 3.6.0
  */
+@SuppressWarnings("removal")
+@Deprecated(since = "3.4.0", forRemoval = true)
 class MockBeanContextCachingTests {
 
-	private final DefaultContextCache contextCache = new DefaultContextCache();
+	private final DefaultContextCache contextCache = new DefaultContextCache(2);
 
 	private final DefaultCacheAwareContextLoaderDelegate delegate = new DefaultCacheAwareContextLoaderDelegate(
 			this.contextCache);
@@ -54,10 +57,10 @@ class MockBeanContextCachingTests {
 	@SuppressWarnings("unchecked")
 	void clearCache() {
 		Map<MergedContextConfiguration, ApplicationContext> contexts = (Map<MergedContextConfiguration, ApplicationContext>) ReflectionTestUtils
-				.getField(this.contextCache, "contextMap");
+			.getField(this.contextCache, "contextMap");
 		for (ApplicationContext context : contexts.values()) {
-			if (context instanceof ConfigurableApplicationContext) {
-				((ConfigurableApplicationContext) context).close();
+			if (context instanceof ConfigurableApplicationContext configurableContext) {
+				configurableContext.close();
 			}
 		}
 		this.contextCache.clear();
@@ -66,7 +69,7 @@ class MockBeanContextCachingTests {
 	@Test
 	void whenThereIsANormalBeanAndAMockBeanThenTwoContextsAreCreated() {
 		bootstrapContext(TestClass.class);
-		assertThat(this.contextCache.size()).isEqualTo(1);
+		assertThat(this.contextCache.size()).isOne();
 		bootstrapContext(MockedBeanTestClass.class);
 		assertThat(this.contextCache.size()).isEqualTo(2);
 	}
@@ -74,9 +77,9 @@ class MockBeanContextCachingTests {
 	@Test
 	void whenThereIsTheSameMockedBeanInEachTestClassThenOneContextIsCreated() {
 		bootstrapContext(MockedBeanTestClass.class);
-		assertThat(this.contextCache.size()).isEqualTo(1);
+		assertThat(this.contextCache.size()).isOne();
 		bootstrapContext(AnotherMockedBeanTestClass.class);
-		assertThat(this.contextCache.size()).isEqualTo(1);
+		assertThat(this.contextCache.size()).isOne();
 	}
 
 	@SuppressWarnings("rawtypes")

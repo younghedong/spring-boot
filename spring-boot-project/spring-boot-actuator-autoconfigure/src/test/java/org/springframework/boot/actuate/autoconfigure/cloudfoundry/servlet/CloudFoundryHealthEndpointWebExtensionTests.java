@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2021 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -49,28 +49,28 @@ import static org.assertj.core.api.Assertions.assertThat;
 class CloudFoundryHealthEndpointWebExtensionTests {
 
 	private final WebApplicationContextRunner contextRunner = new WebApplicationContextRunner()
-			.withPropertyValues("VCAP_APPLICATION={}")
-			.withConfiguration(AutoConfigurations.of(SecurityAutoConfiguration.class, WebMvcAutoConfiguration.class,
-					JacksonAutoConfiguration.class, DispatcherServletAutoConfiguration.class,
-					HttpMessageConvertersAutoConfiguration.class, PropertyPlaceholderAutoConfiguration.class,
-					RestTemplateAutoConfiguration.class, ManagementContextAutoConfiguration.class,
-					ServletManagementContextAutoConfiguration.class, EndpointAutoConfiguration.class,
-					WebEndpointAutoConfiguration.class, HealthContributorAutoConfiguration.class,
-					HealthEndpointAutoConfiguration.class, CloudFoundryActuatorAutoConfiguration.class))
-			.withUserConfiguration(TestHealthIndicator.class);
+		.withPropertyValues("VCAP_APPLICATION={}")
+		.withConfiguration(AutoConfigurations.of(SecurityAutoConfiguration.class, WebMvcAutoConfiguration.class,
+				JacksonAutoConfiguration.class, DispatcherServletAutoConfiguration.class,
+				HttpMessageConvertersAutoConfiguration.class, PropertyPlaceholderAutoConfiguration.class,
+				RestTemplateAutoConfiguration.class, ManagementContextAutoConfiguration.class,
+				ServletManagementContextAutoConfiguration.class, EndpointAutoConfiguration.class,
+				WebEndpointAutoConfiguration.class, HealthContributorAutoConfiguration.class,
+				HealthEndpointAutoConfiguration.class, CloudFoundryActuatorAutoConfiguration.class))
+		.withUserConfiguration(TestHealthIndicator.class);
 
 	@Test
 	void healthComponentsAlwaysPresent() {
 		this.contextRunner.run((context) -> {
 			CloudFoundryHealthEndpointWebExtension extension = context
-					.getBean(CloudFoundryHealthEndpointWebExtension.class);
+				.getBean(CloudFoundryHealthEndpointWebExtension.class);
 			HealthComponent body = extension.health(ApiVersion.V3).getBody();
 			HealthComponent health = ((CompositeHealth) body).getComponents().entrySet().iterator().next().getValue();
 			assertThat(((Health) health).getDetails()).containsEntry("spring", "boot");
 		});
 	}
 
-	private static class TestHealthIndicator implements HealthIndicator {
+	private static final class TestHealthIndicator implements HealthIndicator {
 
 		@Override
 		public Health health() {

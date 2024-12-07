@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2021 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -35,10 +35,11 @@ import org.springframework.validation.beanvalidation.SpringValidatorAdapter;
 /**
  * {@link Validator} implementation that delegates calls to another {@link Validator}.
  * This {@link Validator} implements Spring's {@link SmartValidator} interface but does
- * not implement the JSR-303 {@code javax.validator.Validator} interface.
+ * not implement the JSR-303 {@code jakarta.validator.Validator} interface.
  *
  * @author Stephane Nicoll
  * @author Phillip Webb
+ * @author Zisis Pavloudis
  * @since 2.0.0
  */
 public class ValidatorAdapter implements SmartValidator, ApplicationContextAware, InitializingBean, DisposableBean {
@@ -57,8 +58,8 @@ public class ValidatorAdapter implements SmartValidator, ApplicationContextAware
 	}
 
 	@Override
-	public boolean supports(Class<?> clazz) {
-		return this.target.supports(clazz);
+	public boolean supports(Class<?> type) {
+		return this.target.supports(type);
 	}
 
 	@Override
@@ -73,22 +74,22 @@ public class ValidatorAdapter implements SmartValidator, ApplicationContextAware
 
 	@Override
 	public void setApplicationContext(ApplicationContext applicationContext) throws BeansException {
-		if (!this.existingBean && this.target instanceof ApplicationContextAware) {
-			((ApplicationContextAware) this.target).setApplicationContext(applicationContext);
+		if (!this.existingBean && this.target instanceof ApplicationContextAware contextAwareTarget) {
+			contextAwareTarget.setApplicationContext(applicationContext);
 		}
 	}
 
 	@Override
 	public void afterPropertiesSet() throws Exception {
-		if (!this.existingBean && this.target instanceof InitializingBean) {
-			((InitializingBean) this.target).afterPropertiesSet();
+		if (!this.existingBean && this.target instanceof InitializingBean initializingBean) {
+			initializingBean.afterPropertiesSet();
 		}
 	}
 
 	@Override
 	public void destroy() throws Exception {
-		if (!this.existingBean && this.target instanceof DisposableBean) {
-			((DisposableBean) this.target).destroy();
+		if (!this.existingBean && this.target instanceof DisposableBean disposableBean) {
+			disposableBean.destroy();
 		}
 	}
 
@@ -120,11 +121,11 @@ public class ValidatorAdapter implements SmartValidator, ApplicationContextAware
 
 	private static Validator getExisting(ApplicationContext applicationContext) {
 		try {
-			jakarta.validation.Validator validator = applicationContext.getBean(jakarta.validation.Validator.class);
-			if (validator instanceof Validator) {
-				return (Validator) validator;
+			jakarta.validation.Validator validatorBean = applicationContext.getBean(jakarta.validation.Validator.class);
+			if (validatorBean instanceof Validator validator) {
+				return validator;
 			}
-			return new SpringValidatorAdapter(validator);
+			return new SpringValidatorAdapter(validatorBean);
 		}
 		catch (NoSuchBeanDefinitionException ex) {
 			return null;
@@ -144,14 +145,22 @@ public class ValidatorAdapter implements SmartValidator, ApplicationContextAware
 	}
 
 	private static Validator wrap(Validator validator, boolean existingBean) {
-		if (validator instanceof jakarta.validation.Validator) {
-			if (validator instanceof SpringValidatorAdapter) {
-				return new ValidatorAdapter((SpringValidatorAdapter) validator, existingBean);
+		if (validator instanceof jakarta.validation.Validator jakartaValidator) {
+			if (jakartaValidator instanceof SpringValidatorAdapter adapter) {
+				return new ValidatorAdapter(adapter, existingBean);
 			}
-			return new ValidatorAdapter(new SpringValidatorAdapter((jakarta.validation.Validator) validator),
-					existingBean);
+			return new ValidatorAdapter(new SpringValidatorAdapter(jakartaValidator), existingBean);
 		}
 		return validator;
+	}
+
+	@Override
+	@SuppressWarnings("unchecked")
+	public <T> T unwrap(Class<T> type) {
+		if (type.isInstance(this.target)) {
+			return (T) this.target;
+		}
+		return this.target.unwrap(type);
 	}
 
 }
