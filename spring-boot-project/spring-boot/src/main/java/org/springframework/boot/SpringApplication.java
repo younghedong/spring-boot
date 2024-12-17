@@ -271,6 +271,18 @@ public class SpringApplication {
 	public SpringApplication(ResourceLoader resourceLoader, Class<?>... primarySources) {
 		this.resourceLoader = resourceLoader;
 		Assert.notNull(primarySources, "PrimarySources must not be null");
+		/**
+		 * LinkedHashSet 保证元素的插入顺序，即元素按照它们被插入 LinkedHashSet 中的顺序进行迭代。它内部使用一个双向链表来维护元素的插入顺序。
+		 * HashMap的存储结构:
+		 * 桶数组 (array of buckets):
+		 * [Bucket 0] -> [apple -> 1] -> [banana -> 2]
+		 * [Bucket 1] -> [cherry -> 3]
+		 * [Bucket 2] -> null
+		 * [Bucket 3] -> [pear -> 4]
+		 * ...
+		 * HashMap的KeySet方法通过会访问底层的数组和链表，获取所有的键，并返回一个实现了 Set 接口的集合。任何通过 keySet() 修改集合的操作都会反映到 HashMap 中
+		 * HashSet 的底层实现是基于 HashMap。在 HashSet 中，每个元素都作为 HashMap 的 键（key），而 值（value）始终是一个固定的常量（通常是 Boolean.TRUE）。
+		 */
 		this.primarySources = new LinkedHashSet<>(Arrays.asList(primarySources));
 		this.properties.setWebApplicationType(WebApplicationType.deduceFromClasspath());
 		this.bootstrapRegistryInitializers = new ArrayList<>(
